@@ -18,6 +18,7 @@ require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-amount
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-checkout.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-signature.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-request.php';
+require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-api.php';
 
 /**
  * Stop the run when a check fails.
@@ -32,21 +33,17 @@ function voybit_for_woocommerce_assert( $condition, $message ) {
 }
 
 $voybit_for_woocommerce_usd = Voybit_For_WooCommerce_Amount::from( '25.00', 'usd' );
-voybit_for_woocommerce_assert( 2500 === $voybit_for_woocommerce_usd['amount_minor'], 'usd minor' );
-voybit_for_woocommerce_assert( '25.00' === $voybit_for_woocommerce_usd['crypto_amount'], 'usd crypto' );
+voybit_for_woocommerce_assert( '25.00' === $voybit_for_woocommerce_usd['fiat_amount'], 'usd amount' );
 voybit_for_woocommerce_assert( 'USD' === $voybit_for_woocommerce_usd['fiat_currency'], 'usd code' );
 
 $voybit_for_woocommerce_jpy = Voybit_For_WooCommerce_Amount::from( '25', 'JPY' );
-voybit_for_woocommerce_assert( 25 === $voybit_for_woocommerce_jpy['amount_minor'], 'jpy minor' );
-voybit_for_woocommerce_assert( '25' === $voybit_for_woocommerce_jpy['crypto_amount'], 'jpy crypto' );
+voybit_for_woocommerce_assert( '25' === $voybit_for_woocommerce_jpy['fiat_amount'], 'jpy amount' );
 
 $voybit_for_woocommerce_bhd = Voybit_For_WooCommerce_Amount::from( '1.234', 'BHD' );
-voybit_for_woocommerce_assert( 1234 === $voybit_for_woocommerce_bhd['amount_minor'], 'bhd minor' );
-voybit_for_woocommerce_assert( '1.234' === $voybit_for_woocommerce_bhd['crypto_amount'], 'bhd crypto' );
+voybit_for_woocommerce_assert( '1.234' === $voybit_for_woocommerce_bhd['fiat_amount'], 'bhd amount' );
 
 $voybit_for_woocommerce_zero_tail = Voybit_For_WooCommerce_Amount::from( '25.5000', 'USD' );
-voybit_for_woocommerce_assert( 2550 === $voybit_for_woocommerce_zero_tail['amount_minor'], 'trailing zero minor' );
-voybit_for_woocommerce_assert( '25.50' === $voybit_for_woocommerce_zero_tail['crypto_amount'], 'trailing zero crypto' );
+voybit_for_woocommerce_assert( '25.50' === $voybit_for_woocommerce_zero_tail['fiat_amount'], 'trailing zero amount' );
 
 foreach ( array( '25.501', '0.00', '0', '-1.00', 'USD', '25.00' ) as $voybit_for_woocommerce_bad ) {
 	$voybit_for_woocommerce_threw = false;
@@ -107,3 +104,9 @@ voybit_for_woocommerce_assert(
 voybit_for_woocommerce_assert( 'woocommerce:12' === Voybit_For_WooCommerce_Request::for_order( 12 ), 'idempotency' );
 voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Request::for_order( 0 ), 'idempotency zero' );
 voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Request::for_order( -1 ), 'idempotency negative' );
+voybit_for_woocommerce_assert(
+	'https://api.voybit.com/api' === Voybit_For_WooCommerce_Api::normalize_base( 'https://API.VOYBIT.COM/api/' ),
+	'api base'
+);
+voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Api::normalize_base( 'http://api.voybit.com/api' ), 'api base https' );
+voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Api::normalize_base( 'https://user@api.voybit.com/api' ), 'api base credentials' );

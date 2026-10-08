@@ -3,7 +3,7 @@
  * Plugin Name: Voybit for WooCommerce
  * Plugin URI: https://github.com/VOYBIT/voybit-payment-gateway-woocommerce
  * Description: Accept Voybit crypto payments in WooCommerce. Customers pay on the Voybit page, and the store confirms the order when Voybit reports the payment.
- * Version: 1.0.2
+ * Version: 1.1.0
  * Author: Voybit
  * Author URI: https://voybit.com
  * License: GPL-2.0-or-later
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.0.2' );
+define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.1.0' );
 define( 'VOYBIT_FOR_WOOCOMMERCE_FILE', __FILE__ );
 define( 'VOYBIT_FOR_WOOCOMMERCE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VOYBIT_FOR_WOOCOMMERCE_URL', plugin_dir_url( __FILE__ ) );
@@ -30,6 +30,43 @@ require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-checkout.php';
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-signature.php';
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-request.php';
+require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-api.php';
+
+/**
+ * Configure callbacks on activation when an API key was already saved.
+ *
+ * Activation remains successful if the key is absent or the API is unavailable.
+ */
+function voybit_for_woocommerce_activate() {
+	$settings = get_option( 'woocommerce_voybit_settings', array() );
+	if ( ! is_array( $settings ) ) {
+		$settings = array();
+	}
+	unset( $settings['asset_id'] );
+
+	$base = Voybit_For_WooCommerce_Api::normalize_base( isset( $settings['api_base_url'] ) ? (string) $settings['api_base_url'] : '' );
+	if ( '' === $base ) {
+		$base = Voybit_For_WooCommerce_Api::DEFAULT_API_BASE;
+	}
+	$settings['api_base_url'] = $base;
+	update_option( 'woocommerce_voybit_settings', $settings );
+
+	$api_key = isset( $settings['api_key'] ) ? trim( (string) $settings['api_key'] ) : '';
+	if ( '' === $api_key ) {
+		return;
+	}
+	$webhook_url = get_rest_url( null, 'voybit/v1/webhook' );
+	$return_url  = add_query_arg( 'wc-api', 'voybit_return', home_url( '/' ) );
+	$secret      = Voybit_For_WooCommerce_Api::configure( $api_key, $base, $webhook_url, $return_url );
+	if ( is_wp_error( $secret ) ) {
+		update_option( 'voybit_for_woocommerce_configuration_notice', $secret->get_error_message(), false );
+		return;
+	}
+	$settings['webhook_secret'] = $secret;
+	update_option( 'woocommerce_voybit_settings', $settings );
+	delete_option( 'voybit_for_woocommerce_configuration_notice' );
+}
+register_activation_hook( __FILE__, 'voybit_for_woocommerce_activate' );
 
 /**
  * Declare compatibility with WooCommerce order storage and the checkout block.
@@ -61,7 +98,6 @@ function voybit_for_woocommerce_init() {
 	if ( ! class_exists( 'WC_Payment_Gateway' ) ) {
 		return;
 	}
-	require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-api.php';
 	require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-gateway.php';
 	require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-webhook.php';
 	add_filter( 'woocommerce_payment_gateways', 'voybit_for_woocommerce_register_gateway' );
@@ -151,7 +187,7 @@ function voybit_for_woocommerce_missing_notice() {
 		return;
 	}
 	echo '<div class="notice notice-warning is-dismissible"><p>';
-	echo esc_html__( 'Voybit for WooCommerce is active, but its payment method needs WooCommerce. Install and activate WooCommerce, then open WooCommerce, Settings, Payments, Voybit to enter the API key, webhook secret, and asset ID.', 'voybit-for-woocommerce' );
+	echo esc_html__( 'Voybit for WooCommerce is active, but its payment method needs WooCommerce. Install and activate WooCommerce, then open WooCommerce, Settings, Payments, Voybit to enter the API key.', 'voybit-for-woocommerce' );
 	if ( current_user_can( 'install_plugins' ) ) {
 		$url = admin_url( 'plugin-install.php?s=woocommerce&tab=search&type=term' );
 		echo ' <a href="' . esc_url( $url ) . '">' . esc_html__( 'View WooCommerce in the plugin directory.', 'voybit-for-woocommerce' ) . '</a>';
@@ -161,13 +197,31 @@ function voybit_for_woocommerce_missing_notice() {
 add_action( 'admin_notices', 'voybit_for_woocommerce_missing_notice' );
 
 /**
+ * Show a safe, actionable notice when automatic integration setup failed.
+ */
+function voybit_for_woocommerce_configuration_notice() {
+	if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'activate_plugins' ) ) {
+		return;
+	}
+	$message = get_option( 'voybit_for_woocommerce_configuration_notice', '' );
+	if ( ! is_string( $message ) || '' === $message ) {
+		return;
+	}
+	$url = admin_url( 'admin.php?page=wc-settings&tab=checkout&section=voybit' );
+	echo '<div class="notice notice-error"><p>' . esc_html( $message ) . ' ';
+	echo '<a href="' . esc_url( $url ) . '">' . esc_html__( 'Open Voybit settings.', 'voybit-for-woocommerce' ) . '</a>';
+	echo '</p></div>';
+}
+add_action( 'admin_notices', 'voybit_for_woocommerce_configuration_notice' );
+
+/**
  * Explain what this store sends to Voybit when a customer pays.
  */
 function voybit_for_woocommerce_privacy() {
 	if ( ! function_exists( 'wp_add_privacy_policy_content' ) ) {
 		return;
 	}
-	$content = __( 'When a customer pays with Voybit, this store sends the order total, currency, order number, and a short description to Voybit to open checkout. The API key and webhook secret stay on this store. Voybit privacy policy: https://voybit.com/privacy', 'voybit-for-woocommerce' );
+	$content = __( 'When a customer pays with Voybit, this store sends the fixed order total, currency, order identifier, and a short description to Voybit to open hosted checkout. The API key and automatically issued webhook secret stay on this store. Voybit privacy policy: https://voybit.com/privacy', 'voybit-for-woocommerce' );
 	wp_add_privacy_policy_content( 'Voybit for WooCommerce', wp_kses_post( wpautop( $content ) ) );
 }
 add_action( 'admin_init', 'voybit_for_woocommerce_privacy' );

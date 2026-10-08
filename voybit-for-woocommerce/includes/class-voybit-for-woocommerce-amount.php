@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Converts a store total into the fiat minor units and crypto amount Voybit expects.
+ * Validates and normalizes a store total for a fixed-fiat checkout session.
  */
 class Voybit_For_WooCommerce_Amount {
 
@@ -52,11 +52,11 @@ class Voybit_For_WooCommerce_Amount {
 	const MAX_MINOR = '9000000000000000';
 
 	/**
-	 * Build the payment amounts for an order total.
+	 * Build the fixed fiat amount for an order total.
 	 *
 	 * @param string $amount   Decimal total, without thousands separators.
 	 * @param string $currency Three-letter currency code.
-	 * @return array{amount_minor: int, crypto_amount: string, fiat_currency: string}
+	 * @return array{fiat_amount: string, fiat_currency: string}
 	 * @throws InvalidArgumentException When the total cannot be sent.
 	 */
 	public static function from( $amount, $currency ) {
@@ -90,8 +90,7 @@ class Voybit_For_WooCommerce_Amount {
 		}
 
 		return array(
-			'amount_minor'   => $value,
-			'crypto_amount'  => 0 === $exponent ? $whole : $whole . '.' . $fraction,
+			'fiat_amount'    => 0 === $exponent ? $whole : $whole . '.' . $fraction,
 			'fiat_currency'  => $currency,
 		);
 	}

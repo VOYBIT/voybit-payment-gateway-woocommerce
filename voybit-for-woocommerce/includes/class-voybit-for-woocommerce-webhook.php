@@ -67,7 +67,7 @@ class Voybit_For_WooCommerce_Webhook {
 	}
 
 	/**
-	 * Fulfil paid and overpaid orders. Other signed events are acknowledged.
+	 * Fulfil paid, overpaid, and completed orders. Other signed events are acknowledged.
 	 *
 	 * @param WP_REST_Request $request Incoming request.
 	 * @return WP_REST_Response
@@ -84,14 +84,14 @@ class Voybit_For_WooCommerce_Webhook {
 			return new WP_REST_Response( null, 400 );
 		}
 
-		$status = isset( $event['status'] ) ? (string) $event['status'] : '';
-		$fulfil = ( 'paid' === $status || 'overpaid' === $status );
+		$status = isset( $event['status'] ) ? strtolower( (string) $event['status'] ) : '';
+		$fulfil = in_array( $status, array( 'paid', 'overpaid', 'completed' ), true );
 		if ( ! self::lock( $payment_id ) ) {
 			return new WP_REST_Response( null, 503 );
 		}
 
 		try {
-			$order = self::order_for_payment( $payment_id );
+			$order = self::order_for_event( $event, $payment_id );
 			if ( ! $order && $fulfil ) {
 				return new WP_REST_Response( null, 503 );
 			}
@@ -111,7 +111,7 @@ class Voybit_For_WooCommerce_Webhook {
 	}
 
 	/**
-	 * Mark the order paid when the public ID matches.
+	 * Mark the order paid when the signed event matches its checkout session.
 	 *
 	 * @param WC_Order             $order Order found by payment ID.
 	 * @param array<string, mixed> $event Webhook event.
@@ -123,9 +123,8 @@ class Voybit_For_WooCommerce_Webhook {
 			return;
 		}
 
-		$public_id = isset( $event['public_id'] ) ? (string) $event['public_id'] : '';
-		$stored    = (string) $order->get_meta( '_voybit_public_id' );
-		if ( '' === $public_id || strlen( $public_id ) !== strlen( $stored ) || ! hash_equals( $stored, $public_id ) ) {
+		$payment_id = isset( $event['payment_id'] ) ? strtolower( (string) $event['payment_id'] ) : '';
+		if ( ! self::event_matches_order( $order, $event, $payment_id ) ) {
 			$order->add_order_note( __( 'Voybit webhook did not match this payment.', 'voybit-for-woocommerce' ) );
 			$order->save();
 			return;
@@ -140,30 +139,121 @@ class Voybit_For_WooCommerce_Webhook {
 			return;
 		}
 
-		$order->payment_complete( $public_id );
+		$order->update_meta_data( '_voybit_payment_id', $payment_id );
+		$order->payment_complete( $payment_id );
 		$order->add_order_note( __( 'Voybit confirmed this payment.', 'voybit-for-woocommerce' ) );
 		$order->save();
 	}
 
 	/**
-	 * Find the order that stored this payment ID.
+	 * Find the order linked to a signed payment event.
 	 *
-	 * @param string $payment_id Voybit payment ID.
+	 * @param array<string, mixed> $event      Webhook event.
+	 * @param string               $payment_id Voybit payment ID.
 	 * @return WC_Order|false
 	 */
-	private static function order_for_payment( $payment_id ) {
+	private static function order_for_event( $event, $payment_id ) {
+		$order = self::order_for_meta( '_voybit_payment_id', $payment_id );
+		if ( $order ) {
+			return $order;
+		}
+
+		$session_id = self::session_id( $event );
+		if ( self::valid_uuid( $session_id ) ) {
+			$order = self::order_for_meta( '_voybit_session_id', $session_id );
+			if ( $order ) {
+				return $order;
+			}
+		}
+
+		$metadata = isset( $event['metadata'] ) && is_array( $event['metadata'] ) ? $event['metadata'] : array();
+		$order_id = isset( $metadata['order_id'] ) ? (string) $metadata['order_id'] : '';
+		if ( preg_match( '/^[1-9][0-9]{0,17}$/', $order_id ) ) {
+			$order = wc_get_order( (int) $order_id );
+			return $order instanceof WC_Order ? $order : false;
+		}
+		return false;
+	}
+
+	/**
+	 * Find one order by an internal Voybit metadata value.
+	 *
+	 * @param string $key   Metadata key.
+	 * @param string $value Metadata value.
+	 * @return WC_Order|false
+	 */
+	private static function order_for_meta( $key, $value ) {
+		if ( '' === (string) $value ) {
+			return false;
+		}
 		$orders = wc_get_orders(
 			array(
 				'limit'        => 1,
-				'meta_key'     => '_voybit_payment_id', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
-				'meta_value'   => $payment_id, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				'meta_key'     => $key, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'   => $value, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 				'meta_compare' => '=',
 			)
 		);
-		if ( empty( $orders ) || ! $orders[0] instanceof WC_Order ) {
+		return ! empty( $orders ) && $orders[0] instanceof WC_Order ? $orders[0] : false;
+	}
+
+	/**
+	 * Verify that an event references the session stored on an order.
+	 *
+	 * @param WC_Order             $order      Order.
+	 * @param array<string, mixed> $event      Webhook event.
+	 * @param string               $payment_id Payment UUID.
+	 * @return bool
+	 */
+	private static function event_matches_order( $order, $event, $payment_id ) {
+		$legacy_payment = strtolower( (string) $order->get_meta( '_voybit_payment_id' ) );
+		$stored_session = strtolower( (string) $order->get_meta( '_voybit_session_id' ) );
+		$event_session  = self::session_id( $event );
+		$stored_public  = (string) $order->get_meta( '_voybit_public_id' );
+		$event_public   = isset( $event['checkout_public_id'] )
+			? (string) $event['checkout_public_id']
+			: ( isset( $event['public_id'] ) ? (string) $event['public_id'] : '' );
+
+		$linked = self::same( $legacy_payment, $payment_id ) || self::same( $stored_session, $event_session );
+		if ( ! $linked && '' !== $stored_public && '' !== $event_public ) {
+			$linked = self::same( $stored_public, $event_public );
+		}
+		if ( ! $linked ) {
 			return false;
 		}
-		return $orders[0];
+		return '' === $stored_public || '' === $event_public || self::same( $stored_public, $event_public );
+	}
+
+	/**
+	 * Checkout session UUID carried by the webhook.
+	 *
+	 * @param array<string, mixed> $event Webhook event.
+	 * @return string
+	 */
+	private static function session_id( $event ) {
+		$value = isset( $event['session_id'] ) ? $event['session_id'] : ( isset( $event['checkout_session_id'] ) ? $event['checkout_session_id'] : '' );
+		return strtolower( trim( (string) $value ) );
+	}
+
+	/**
+	 * Constant-time comparison for two non-empty identifiers.
+	 *
+	 * @param string $left  First value.
+	 * @param string $right Second value.
+	 * @return bool
+	 */
+	private static function same( $left, $right ) {
+		return '' !== $left && strlen( $left ) === strlen( $right ) && hash_equals( $left, $right );
+	}
+
+	/**
+	 * Whether a value is a UUID.
+	 *
+	 * @param string $value Candidate.
+	 * @return bool
+	 */
+	private static function valid_uuid( $value ) {
+		return 1 === preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $value );
 	}
 
 	/**

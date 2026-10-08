@@ -23,7 +23,7 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 		$this->icon               = VOYBIT_FOR_WOOCOMMERCE_URL . 'assets/icon.svg';
 		$this->has_fields         = false;
 		$this->method_title       = __( 'Voybit', 'voybit-for-woocommerce' );
-		$this->method_description = __( 'Customers pay on the Voybit page. Enter the API key, webhook secret, and asset ID from the Voybit dashboard. If setup does not match this page, contact Voybit support at https://voybit.com/contact.', 'voybit-for-woocommerce' );
+		$this->method_description = __( 'Customers choose an enabled asset and pay on the Voybit hosted checkout page. Saving the API key securely configures this store with Voybit.', 'voybit-for-woocommerce' );
 		$this->supports           = array( 'products' );
 
 		$this->init_form_fields();
@@ -45,7 +45,7 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 				'title'       => __( 'Enable Voybit', 'voybit-for-woocommerce' ),
 				'label'       => __( 'Show Voybit on checkout', 'voybit-for-woocommerce' ),
 				'type'        => 'checkbox',
-				'description' => __( 'The WordPress site address must use HTTPS. Voybit stays hidden at checkout until the API key, webhook secret, and asset ID are saved.', 'voybit-for-woocommerce' ),
+				'description' => __( 'The WordPress site address must use HTTPS. Voybit stays hidden until the API key has configured this store successfully.', 'voybit-for-woocommerce' ),
 				'default'     => 'no',
 			),
 			'title'           => array(
@@ -68,39 +68,13 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 				'default'     => '',
 				'placeholder' => 'vb_live_',
 			),
-			'webhook_secret'  => array(
-				'title'       => __( 'Webhook secret', 'voybit-for-woocommerce' ),
-				'type'        => 'voybit_secret',
-				'description' => __( 'Secret shown once when you create the gateway. Leave this blank to keep the saved secret.', 'voybit-for-woocommerce' ),
-				'default'     => '',
-			),
-			'asset_id'        => array(
-				'title'       => __( 'Asset ID', 'voybit-for-woocommerce' ),
+			'api_base_url'    => array(
+				'title'       => __( 'API base URL (advanced)', 'voybit-for-woocommerce' ),
 				'type'        => 'text',
-				'description' => __( 'Asset ID from the same Voybit gateway. A USD store should use a stablecoin such as USDT. The order total is the amount of that asset.', 'voybit-for-woocommerce' ),
-				'default'     => '',
+				'description' => __( 'Keep the default unless Voybit support gives you another HTTPS API base URL.', 'voybit-for-woocommerce' ),
+				'default'     => Voybit_For_WooCommerce_Api::DEFAULT_API_BASE,
+				'desc_tip'    => true,
 			),
-			'webhook_url'     => array(
-				'title'       => __( 'Webhook URL', 'voybit-for-woocommerce' ),
-				'type'        => 'title',
-				'description' => $this->endpoint_note(),
-			),
-		);
-	}
-
-	/**
-	 * Show the URLs the merchant copies into the Voybit dashboard.
-	 *
-	 * @return string
-	 */
-	private function endpoint_note() {
-		$webhook = esc_url( get_rest_url( null, 'voybit/v1/webhook' ) );
-		$return  = function_exists( 'WC' ) ? esc_url( WC()->api_request_url( 'voybit_return' ) ) : '';
-		return sprintf(
-			/* translators: 1: webhook URL, 2: return URL */
-			__( 'Copy the webhook URL into the Voybit gateway: %1$s. Copy the return URL into the same gateway: %2$s. Both addresses must use HTTPS.', 'voybit-for-woocommerce' ),
-			'<code>' . $webhook . '</code>',
-			'<code>' . $return . '</code>'
 		);
 	}
 
@@ -148,30 +122,28 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 			return '';
 		}
 		if ( ! preg_match( '/^[A-Za-z0-9._:-]+$/', $value ) || strlen( $value ) > 256 ) {
-			WC_Admin_Settings::add_error( __( 'The API key or webhook secret contains characters Voybit does not use. Paste the value from the Voybit dashboard.', 'voybit-for-woocommerce' ) );
+			WC_Admin_Settings::add_error( __( 'The API key contains characters Voybit does not use. Paste the key from the Voybit dashboard.', 'voybit-for-woocommerce' ) );
 			return (string) $this->get_option( $key );
 		}
 		return $value;
 	}
 
 	/**
-	 * Asset ID must be a UUID.
+	 * API base must be an absolute HTTPS URL.
 	 *
 	 * @param string $key   Field key.
 	 * @param mixed  $value Submitted value.
 	 * @return string
 	 */
-	public function validate_asset_id_field( $key, $value ) {
+	public function validate_api_base_url_field( $key, $value ) {
 		unset( $key );
-		$value = is_scalar( $value ) ? strtolower( trim( (string) wc_clean( (string) $value ) ) ) : '';
-		if ( '' === $value ) {
-			return '';
+		$value = is_scalar( $value ) ? trim( (string) wc_clean( (string) $value ) ) : '';
+		$base  = Voybit_For_WooCommerce_Api::normalize_base( $value );
+		if ( '' === $base ) {
+			WC_Admin_Settings::add_error( __( 'Enter a valid HTTPS Voybit API base URL.', 'voybit-for-woocommerce' ) );
+			return $this->api_base_url();
 		}
-		if ( ! self::valid_uuid( $value ) ) {
-			WC_Admin_Settings::add_error( __( 'Enter the asset ID shown on the Voybit gateway. It looks like a UUID.', 'voybit-for-woocommerce' ) );
-			return (string) $this->get_option( 'asset_id' );
-		}
-		return $value;
+		return $base;
 	}
 
 	/**
@@ -204,38 +176,53 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Keep a blank secret, and refuse an asset ID that is not a UUID.
+	 * Save settings and automatically configure the Voybit integration.
 	 *
 	 * @return bool
 	 */
 	public function process_admin_options() {
 		$previous_key    = (string) $this->get_option( 'api_key' );
 		$previous_secret = (string) $this->get_option( 'webhook_secret' );
-		$previous_asset  = (string) $this->get_option( 'asset_id' );
+		$previous_base   = $this->api_base_url();
 		$saved           = parent::process_admin_options();
 
 		if ( '' === (string) $this->get_option( 'api_key' ) && '' !== $previous_key ) {
 			$this->update_option( 'api_key', $previous_key );
 		}
-		if ( '' === (string) $this->get_option( 'webhook_secret' ) && '' !== $previous_secret ) {
-			$this->update_option( 'webhook_secret', $previous_secret );
+
+		$key  = $this->api_key();
+		$base = $this->api_base_url();
+		if ( '' !== $key && 'https' === wp_parse_url( home_url(), PHP_URL_SCHEME ) ) {
+			$secret = Voybit_For_WooCommerce_Api::configure( $key, $base, $this->webhook_url(), $this->return_url() );
+			if ( is_wp_error( $secret ) ) {
+				WC_Admin_Settings::add_error( $secret->get_error_message() );
+				if ( '' !== $previous_key && '' !== $previous_secret && ( $key !== $previous_key || $base !== $previous_base ) ) {
+					$this->update_option( 'api_key', $previous_key );
+					$this->update_option( 'api_base_url', $previous_base );
+					$this->update_option( 'webhook_secret', $previous_secret );
+					WC_Admin_Settings::add_error( __( 'The previous working Voybit configuration was kept.', 'voybit-for-woocommerce' ) );
+				} elseif ( '' === $previous_secret ) {
+					$this->update_option( 'webhook_secret', '' );
+				}
+			} else {
+				$this->update_option( 'webhook_secret', $secret );
+				delete_option( 'voybit_for_woocommerce_configuration_notice' );
+			}
 		}
 
-		$asset = strtolower( trim( (string) $this->get_option( 'asset_id' ) ) );
-		if ( '' !== $asset && ! self::valid_uuid( $asset ) ) {
-			WC_Admin_Settings::add_error( __( 'Enter the asset ID shown on the Voybit gateway. It looks like a UUID.', 'voybit-for-woocommerce' ) );
-			$this->update_option( 'asset_id', $previous_asset );
-			$asset = $previous_asset;
-		} elseif ( $asset !== (string) $this->get_option( 'asset_id' ) ) {
-			$this->update_option( 'asset_id', $asset );
+		$settings = get_option( 'woocommerce_voybit_settings', array() );
+		if ( is_array( $settings ) && isset( $settings['asset_id'] ) ) {
+			unset( $settings['asset_id'] );
+			update_option( 'woocommerce_voybit_settings', $settings );
+			$this->settings = $settings;
 		}
 
 		if ( 'yes' === $this->get_option( 'enabled' ) ) {
 			if ( 'https' !== wp_parse_url( home_url(), PHP_URL_SCHEME ) ) {
 				WC_Admin_Settings::add_error( __( 'Voybit needs the store address to use HTTPS. Update the WordPress site address, then enable Voybit.', 'voybit-for-woocommerce' ) );
 				$this->update_option( 'enabled', 'no' );
-			} elseif ( '' === (string) $this->get_option( 'api_key' ) || '' === (string) $this->get_option( 'webhook_secret' ) || ! self::valid_uuid( $asset ) ) {
-				WC_Admin_Settings::add_error( __( 'Enter the API key, webhook secret, and asset ID before enabling Voybit.', 'voybit-for-woocommerce' ) );
+			} elseif ( '' === $this->api_key() || '' === $this->webhook_secret() ) {
+				WC_Admin_Settings::add_error( __( 'Save a valid API key so Voybit can configure the webhook before enabling this payment method.', 'voybit-for-woocommerce' ) );
 				$this->update_option( 'enabled', 'no' );
 			}
 		}
@@ -244,7 +231,7 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Hide Voybit until the store is on HTTPS and the three values are saved.
+	 * Hide Voybit until the store is on HTTPS and automatic setup has completed.
 	 *
 	 * @return bool
 	 */
@@ -255,7 +242,7 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 		if ( 'https' !== wp_parse_url( home_url(), PHP_URL_SCHEME ) ) {
 			return false;
 		}
-		return '' !== $this->api_key() && '' !== $this->webhook_secret() && self::valid_uuid( $this->asset_id() );
+		return '' !== $this->api_key() && '' !== $this->webhook_secret();
 	}
 
 	/**
@@ -277,12 +264,34 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Saved asset ID.
+	 * Saved API base URL.
 	 *
 	 * @return string
 	 */
-	public function asset_id() {
-		return strtolower( trim( (string) $this->get_option( 'asset_id' ) ) );
+	public function api_base_url() {
+		$base = Voybit_For_WooCommerce_Api::normalize_base( (string) $this->get_option( 'api_base_url', Voybit_For_WooCommerce_Api::DEFAULT_API_BASE ) );
+		return '' !== $base ? $base : Voybit_For_WooCommerce_Api::DEFAULT_API_BASE;
+	}
+
+	/**
+	 * Public webhook callback URL.
+	 *
+	 * @return string
+	 */
+	private function webhook_url() {
+		return get_rest_url( null, 'voybit/v1/webhook' );
+	}
+
+	/**
+	 * Customer return URL.
+	 *
+	 * @return string
+	 */
+	private function return_url() {
+		if ( function_exists( 'WC' ) && WC() && method_exists( WC(), 'api_request_url' ) ) {
+			return WC()->api_request_url( 'voybit_return' );
+		}
+		return add_query_arg( 'wc-api', 'voybit_return', home_url( '/' ) );
 	}
 
 	/**
@@ -331,13 +340,4 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 		exit;
 	}
 
-	/**
-	 * Whether a string is a UUID.
-	 *
-	 * @param string $value Candidate.
-	 * @return bool
-	 */
-	public static function valid_uuid( $value ) {
-		return 1 === preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $value );
-	}
 }

@@ -15,10 +15,62 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Voybit_For_WooCommerce_Api {
 
-	const ENDPOINT = 'https://api.voybit.com/api/v1/gateway/payments';
+	const DEFAULT_API_BASE       = 'https://api.voybit.com/api';
+	const PAYMENT_WINDOW_SECONDS = 900;
 
 	/**
-	 * Open checkout for an order, or reuse a checkout that is still valid.
+	 * Configure the gateway callback URLs and return the rotated webhook secret.
+	 *
+	 * @param string $api_key     Gateway API key.
+	 * @param string $api_base    API base URL.
+	 * @param string $webhook_url Public webhook callback.
+	 * @param string $return_url  Customer return URL.
+	 * @return string|WP_Error Webhook secret.
+	 */
+	public static function configure( $api_key, $api_base, $webhook_url, $return_url ) {
+		$base = self::normalize_base( $api_base );
+		if ( '' === $base || ! self::valid_https_url( $webhook_url ) || ! self::valid_https_url( $return_url ) ) {
+			return new WP_Error( 'voybit_configuration_url', __( 'Voybit needs valid HTTPS webhook and return URLs.', 'voybit-for-woocommerce' ) );
+		}
+
+		$body = wp_json_encode(
+			array(
+				'webhook_url' => (string) $webhook_url,
+				'return_url'  => (string) $return_url,
+			)
+		);
+		if ( ! is_string( $body ) || '' === $body ) {
+			return new WP_Error( 'voybit_configuration_request', __( 'Voybit integration setup could not be prepared.', 'voybit-for-woocommerce' ) );
+		}
+
+		$response = self::post( $base . '/v1/gateway/integration/configure', $body, $api_key, '' );
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error( 'voybit_configuration_transport', __( 'Voybit could not be reached. Check the API base URL and try saving again.', 'voybit-for-woocommerce' ) );
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $code < 200 || $code >= 300 || ! is_array( $data ) ) {
+			$error_code = ( is_array( $data ) && isset( $data['error']['code'] ) ) ? sanitize_key( (string) $data['error']['code'] ) : 'http_' . $code;
+			return new WP_Error(
+				'voybit_configuration_api',
+				sprintf(
+					/* translators: %s: safe API error code. */
+					__( 'Voybit could not configure this store (%s). Check the API key and API base URL, then save again.', 'voybit-for-woocommerce' ),
+					substr( $error_code ? $error_code : 'unknown', 0, 64 )
+				)
+			);
+		}
+
+		$secret = isset( $data['webhook_secret'] ) ? trim( (string) $data['webhook_secret'] ) : '';
+		if ( ! preg_match( '/^[A-Za-z0-9._:-]{8,256}$/', $secret ) ) {
+			return new WP_Error( 'voybit_configuration_response', __( 'Voybit configured the store but did not return a valid webhook secret. Save again or contact Voybit support.', 'voybit-for-woocommerce' ) );
+		}
+		return $secret;
+	}
+
+	/**
+	 * Open checkout for an order, or reuse a checkout session that is still valid.
 	 *
 	 * @param WC_Order                         $order   Order being paid.
 	 * @param Voybit_For_WooCommerce_Gateway $gateway Gateway settings.
@@ -63,14 +115,14 @@ class Voybit_For_WooCommerce_Api {
 
 			$body = wp_json_encode(
 				array(
-					'asset_id'       => $gateway->asset_id(),
-					'crypto_amount'  => $priced['crypto_amount'],
-					'amount_minor'   => $priced['amount_minor'],
-					'fiat_currency'  => $priced['fiat_currency'],
-					'description'    => $description,
-					'metadata'       => array(
+					'fiat_amount'            => $priced['fiat_amount'],
+					'fiat_currency'          => $priced['fiat_currency'],
+					'description'            => $description,
+					'metadata'               => array(
+						'cms'      => 'woocommerce',
 						'order_id' => (string) $order_id,
 					),
+					'payment_window_seconds' => self::PAYMENT_WINDOW_SECONDS,
 				)
 			);
 			if ( ! is_string( $body ) || '' === $body ) {
@@ -80,7 +132,15 @@ class Voybit_For_WooCommerce_Api {
 				);
 			}
 
-			$response = self::post( $body, $gateway->api_key(), $key );
+			$base = self::normalize_base( $gateway->api_base_url() );
+			if ( '' === $base ) {
+				return new WP_Error(
+					'voybit_api_base',
+					__( 'Voybit is not configured correctly. Ask the store administrator to check the API base URL.', 'voybit-for-woocommerce' )
+				);
+			}
+
+			$response = self::post( $base . '/v1/gateway/checkout-sessions', $body, $gateway->api_key(), $key );
 			if ( is_wp_error( $response ) ) {
 				self::log( $order_id, 'transport' );
 				return new WP_Error(
@@ -106,24 +166,21 @@ class Voybit_For_WooCommerce_Api {
 					)
 				);
 				$order->save();
-				if ( 'crypto_amount_in_use' === $error_code ) {
-					return new WP_Error(
-						'voybit_amount_in_use',
-						__( 'Another Voybit payment is already open for this amount. Wait a few minutes and try again.', 'voybit-for-woocommerce' )
-					);
-				}
 				return new WP_Error(
 					'voybit_api',
 					__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
 				);
 			}
 
-			$payment_id   = isset( $data['id'] ) ? strtolower( (string) $data['id'] ) : '';
+			$session_id   = isset( $data['session_id'] ) ? strtolower( (string) $data['session_id'] ) : '';
 			$checkout_url = Voybit_For_WooCommerce_Checkout::canonical( isset( $data['checkout_url'] ) ? (string) $data['checkout_url'] : '' );
 			$public_id    = isset( $data['public_id'] ) ? (string) $data['public_id'] : '';
 			$from_url     = '' !== $checkout_url ? substr( $checkout_url, strlen( 'https://voybit.com/pay/' ) ) : '';
+			if ( '' === $public_id ) {
+				$public_id = $from_url;
+			}
 			$ids_match    = '' !== $from_url && strlen( $from_url ) === strlen( $public_id ) && hash_equals( $from_url, $public_id );
-			if ( ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $payment_id ) || ! $ids_match ) {
+			if ( ! self::valid_uuid( $session_id ) || ! $ids_match ) {
 				self::log( $order_id, 'invalid_checkout' );
 				return new WP_Error(
 					'voybit_checkout',
@@ -133,14 +190,10 @@ class Voybit_For_WooCommerce_Api {
 
 			$expires = isset( $data['expires_at'] ) ? strtotime( (string) $data['expires_at'] ) : false;
 			if ( ! is_int( $expires ) || $expires <= time() ) {
-				self::log( $order_id, 'expired' );
-				return new WP_Error(
-					'voybit_expired',
-					__( 'This Voybit payment has expired. Wait a few minutes and try again.', 'voybit-for-woocommerce' )
-				);
+				$expires = time() + self::PAYMENT_WINDOW_SECONDS;
 			}
 
-			$order->update_meta_data( '_voybit_payment_id', $payment_id );
+			$order->update_meta_data( '_voybit_session_id', $session_id );
 			$order->update_meta_data( '_voybit_public_id', $public_id );
 			$order->update_meta_data( '_voybit_checkout_url', $checkout_url );
 			$order->update_meta_data( '_voybit_expires_at', (string) $expires );
@@ -168,28 +221,64 @@ class Voybit_For_WooCommerce_Api {
 	}
 
 	/**
-	 * POST the payment, retrying only temporary failures.
+	 * Normalize an HTTPS API base URL.
 	 *
+	 * @param string $url Candidate base URL.
+	 * @return string
+	 */
+	public static function normalize_base( $url ) {
+		$url   = trim( (string) $url );
+		$parts = parse_url( $url );
+		if (
+			! is_array( $parts )
+			|| ! isset( $parts['scheme'], $parts['host'] )
+			|| 'https' !== strtolower( (string) $parts['scheme'] )
+			|| '' === (string) $parts['host']
+			|| isset( $parts['user'] )
+			|| isset( $parts['pass'] )
+			|| isset( $parts['query'] )
+			|| isset( $parts['fragment'] )
+		) {
+			return '';
+		}
+		$port = isset( $parts['port'] ) ? (int) $parts['port'] : 0;
+		if ( $port < 0 || $port > 65535 ) {
+			return '';
+		}
+		$path = isset( $parts['path'] ) ? rtrim( (string) $parts['path'], '/' ) : '';
+		if ( preg_match( '/[\x00-\x20\x7f]/', $path ) ) {
+			return '';
+		}
+		return 'https://' . strtolower( (string) $parts['host'] ) . ( $port ? ':' . $port : '' ) . $path;
+	}
+
+	/**
+	 * POST JSON, retrying only temporary failures.
+	 *
+	 * @param string $endpoint        Absolute endpoint URL.
 	 * @param string $body            JSON body.
 	 * @param string $api_key         Gateway API key.
-	 * @param string $idempotency_key Idempotency key.
+	 * @param string $idempotency_key Optional idempotency key.
 	 * @return array|WP_Error Raw HTTP response.
 	 */
-	private static function post( $body, $api_key, $idempotency_key ) {
+	private static function post( $endpoint, $body, $api_key, $idempotency_key ) {
 		$last = null;
 		for ( $attempt = 0; $attempt < 4; $attempt++ ) {
+			$headers = array(
+				'X-Voybit-Api-Key' => $api_key,
+				'Content-Type'     => 'application/json',
+				'Accept'           => 'application/json',
+				'User-Agent'       => 'voybit-for-woocommerce/' . VOYBIT_FOR_WOOCOMMERCE_VERSION,
+			);
+			if ( '' !== $idempotency_key ) {
+				$headers['Idempotency-Key'] = $idempotency_key;
+			}
 			$response = wp_remote_post(
-				self::ENDPOINT,
+				$endpoint,
 				array(
 					'timeout'     => 20,
 					'redirection' => 0,
-					'headers'     => array(
-						'X-Voybit-Api-Key' => $api_key,
-						'Idempotency-Key'  => $idempotency_key,
-						'Content-Type'     => 'application/json',
-						'Accept'           => 'application/json',
-						'User-Agent'       => 'voybit-for-woocommerce/' . VOYBIT_FOR_WOOCOMMERCE_VERSION,
-					),
+					'headers'     => $headers,
 					'body'        => $body,
 				)
 			);
@@ -221,6 +310,32 @@ class Voybit_For_WooCommerce_Api {
 			$last = $response;
 		}
 		return $last ? $last : new WP_Error( 'voybit_transport', 'transport' );
+	}
+
+	/**
+	 * Whether a callback URL is absolute HTTPS.
+	 *
+	 * @param string $url Callback URL.
+	 * @return bool
+	 */
+	private static function valid_https_url( $url ) {
+		$parts = parse_url( trim( (string) $url ) );
+		return is_array( $parts )
+			&& isset( $parts['scheme'], $parts['host'] )
+			&& 'https' === strtolower( (string) $parts['scheme'] )
+			&& '' !== (string) $parts['host']
+			&& ! isset( $parts['user'] )
+			&& ! isset( $parts['pass'] );
+	}
+
+	/**
+	 * Whether a string is a UUID.
+	 *
+	 * @param string $value Candidate.
+	 * @return bool
+	 */
+	private static function valid_uuid( $value ) {
+		return 1 === preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', (string) $value );
 	}
 
 	/**
