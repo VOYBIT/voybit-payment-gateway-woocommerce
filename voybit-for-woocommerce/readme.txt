@@ -4,7 +4,7 @@ Tags: woocommerce, payments, checkout
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -67,6 +67,9 @@ Confirm the method is enabled, the store address uses HTTPS, and the API key, we
 Contact Voybit support at https://voybit.com/contact.
 
 == Changelog ==
+
+= 1.0.2 =
+* Keep development-only tests out of the install archive for a clean WordPress Plugin Check.
 
 = 1.0.1 =
 * Allow activation before WooCommerce is installed and show the required setup steps in WordPress.

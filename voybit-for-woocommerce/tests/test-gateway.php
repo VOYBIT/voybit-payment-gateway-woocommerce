@@ -27,8 +27,7 @@ require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-reques
  */
 function voybit_for_woocommerce_assert( $condition, $message ) {
 	if ( ! $condition ) {
-		fwrite( STDERR, $message . PHP_EOL );
-		exit( 1 );
+		throw new RuntimeException( $message );
 	}
 }
 
@@ -108,5 +107,3 @@ voybit_for_woocommerce_assert(
 voybit_for_woocommerce_assert( 'woocommerce:12' === Voybit_For_WooCommerce_Request::for_order( 12 ), 'idempotency' );
 voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Request::for_order( 0 ), 'idempotency zero' );
 voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Request::for_order( -1 ), 'idempotency negative' );
-
-fwrite( STDOUT, "ok\n" );

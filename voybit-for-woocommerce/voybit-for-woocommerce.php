@@ -3,7 +3,7 @@
  * Plugin Name: Voybit for WooCommerce
  * Plugin URI: https://github.com/VOYBIT/voybit-payment-gateway-woocommerce
  * Description: Accept Voybit crypto payments in WooCommerce. Customers pay on the Voybit page, and the store confirms the order when Voybit reports the payment.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Voybit
  * Author URI: https://voybit.com
  * License: GPL-2.0-or-later
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.0.1' );
+define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.0.2' );
 define( 'VOYBIT_FOR_WOOCOMMERCE_FILE', __FILE__ );
 define( 'VOYBIT_FOR_WOOCOMMERCE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VOYBIT_FOR_WOOCOMMERCE_URL', plugin_dir_url( __FILE__ ) );
