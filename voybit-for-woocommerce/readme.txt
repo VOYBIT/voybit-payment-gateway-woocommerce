@@ -4,19 +4,19 @@ Tags: woocommerce, payments, checkout
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.2
+Stable tag: 1.1.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Accept Voybit crypto payments in WooCommerce. Customers pay on the Voybit page.
+Accept Voybit crypto payments in WooCommerce with buyer-choice hosted checkout.
 
 == Description ==
 
-Voybit for WooCommerce adds a payment method to WooCommerce. The customer pays on the Voybit page. The order stays unpaid until Voybit sends a signed notice that the payment is paid or overpaid.
+Voybit for WooCommerce adds a payment method to WooCommerce. The plugin sends the fixed order total and currency to Voybit. On the hosted payment page, the customer chooses from assets enabled on the merchant's Voybit gateway, confirms a live quote, and then receives the payment address and QR.
 
-The API key and webhook secret are entered in WooCommerce and stay on the store. They are not sent to the browser.
+Only a gateway-bound Voybit API key is entered in WooCommerce. The plugin registers its HTTPS webhook and return URL automatically and stores the rotated webhook signing secret on the store. Neither secret is sent to the browser.
 
-A payment sends the order total, currency, order number, and a short description to Voybit at api.voybit.com. The order total is the amount of the asset you select. A USD store should use a stablecoin such as USDT. Use of the service is covered by these pages:
+A checkout session sends the order total, currency, order number, and a short description to Voybit at api.voybit.com. Use of the service is covered by these pages:
 
 * https://voybit.com/terms
 * https://voybit.com/docs
@@ -30,11 +30,10 @@ WooCommerce is a trademark of Automattic Inc. This plugin is not affiliated with
 2. Activate Voybit for WooCommerce.
 3. Install and activate WooCommerce 8.3 or newer. Voybit can remain active while WooCommerce is being installed.
 4. Open WooCommerce, Settings, Payments, Voybit.
-5. Paste the API key, webhook secret, and asset ID from the Voybit dashboard. Leave a secret blank to keep the saved value.
-6. Copy the webhook URL and the return URL shown on that page into the same gateway in the Voybit dashboard. Both must use HTTPS.
-7. Select Enable Voybit and save the settings.
+5. Create a secret key in the Voybit dashboard, bind it to the gateway whose assets customers may use, and paste the key into WooCommerce.
+6. Select Enable Voybit and save the settings. The plugin registers its webhook and return URL automatically.
 
-The store address in WordPress must use HTTPS. Until the three values are saved, Voybit stays hidden at checkout.
+The store address in WordPress must use HTTPS. Until the API key is saved and automatic setup succeeds, Voybit stays hidden at checkout.
 
 == Frequently Asked Questions ==
 
@@ -44,29 +43,37 @@ Install version 1.0.1 or newer. It can be activated before WooCommerce and shows
 
 = Where do I enter the API key? =
 
-WooCommerce, Settings, Payments, Voybit. Create the gateway and the secret key in the Voybit dashboard first. The key starts with `vb_live_` and the webhook secret starts with `whsec_`.
+WooCommerce, Settings, Payments, Voybit. Create the gateway and a gateway-bound secret key in the Voybit dashboard first. The key starts with `vb_live_`. The plugin obtains and stores its webhook signing secret automatically.
 
-= I saved the page and the secret fields were empty. Did I erase them? =
+= Where do I enter the webhook secret or asset ID? =
 
-No. An empty secret field keeps the value already saved.
+You do not enter either value. The plugin configures its signed webhook automatically, and the customer chooses from assets enabled on the gateway linked to the API key.
 
 = The customer came back and the order is still unpaid. =
 
 That is expected. The return page does not mark the order paid. Voybit marks it paid only after a signed webhook says paid or overpaid.
 
-= Which asset should I use? =
+= Which assets can a customer use? =
 
-The order total is charged as that asset. For a USD store, choose a stablecoin such as USDT. Do not choose a coin whose price moves if the store currency should match the amount.
+The hosted checkout lists only payment-ready assets enabled on the gateway in the Voybit dashboard. The customer selects one and confirms the current conversion quote before payment instructions are created.
 
 = Checkout does not show Voybit. =
 
-Confirm the method is enabled, the store address uses HTTPS, and the API key, webhook secret, and asset ID are saved. Classic checkout and the checkout block both use these settings.
+Confirm the method is enabled, the store address uses HTTPS, the API key is bound to an enabled gateway, and saving the settings completed without an integration setup notice. Classic checkout and the checkout block both use these settings.
 
 = Who do I contact if this does not match my store? =
 
 Contact Voybit support at https://voybit.com/contact.
 
 == Changelog ==
+
+= 1.1.1 =
+* Keep the plugin header, package version, and WordPress.org stable tag aligned.
+* Refresh the WordPress.org instructions for automatic webhook setup and buyer-choice hosted checkout.
+
+= 1.1.0 =
+* Let customers choose from the gateway's enabled assets on Voybit hosted checkout.
+* Configure the signed webhook and return URL automatically; remove manual asset ID and webhook secret fields.
 
 = 1.0.2 =
 * Keep development-only tests out of the install archive for a clean WordPress Plugin Check.

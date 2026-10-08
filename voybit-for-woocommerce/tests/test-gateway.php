@@ -14,6 +14,18 @@ if ( ! defined( 'VOYBIT_FOR_WOOCOMMERCE_TEST' ) ) {
 	return;
 }
 
+if ( ! function_exists( 'wp_parse_url' ) ) {
+	/**
+	 * Minimal WordPress URL parser stand-in for this standalone test file.
+	 *
+	 * @param string $url URL to parse.
+	 * @return array|false
+	 */
+	function wp_parse_url( $url ) {
+		return parse_url( $url );
+	}
+}
+
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-amount.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-checkout.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-signature.php';
@@ -31,6 +43,30 @@ function voybit_for_woocommerce_assert( $condition, $message ) {
 		throw new RuntimeException( $message );
 	}
 }
+
+$voybit_for_woocommerce_plugin_source = file_get_contents( dirname( __DIR__ ) . '/voybit-for-woocommerce.php' );
+$voybit_for_woocommerce_readme_source = file_get_contents( dirname( __DIR__ ) . '/readme.txt' );
+voybit_for_woocommerce_assert( is_string( $voybit_for_woocommerce_plugin_source ), 'plugin source' );
+voybit_for_woocommerce_assert( is_string( $voybit_for_woocommerce_readme_source ), 'readme source' );
+voybit_for_woocommerce_assert(
+	1 === preg_match( '/^[ \t]*\*[ \t]+Version:[ \t]*([0-9]+(?:\.[0-9]+){2})[ \t]*$/mi', $voybit_for_woocommerce_plugin_source, $voybit_for_woocommerce_header_match ),
+	'plugin header version'
+);
+voybit_for_woocommerce_assert(
+	1 === preg_match( "/define\\([ \t]*'VOYBIT_FOR_WOOCOMMERCE_VERSION'[ \t]*,[ \t]*'([^']+)'[ \t]*\\);/", $voybit_for_woocommerce_plugin_source, $voybit_for_woocommerce_constant_match ),
+	'plugin constant version'
+);
+voybit_for_woocommerce_assert(
+	1 === preg_match( '/^Stable tag:[ \t]*([0-9]+(?:\.[0-9]+){2})[ \t]*$/mi', $voybit_for_woocommerce_readme_source, $voybit_for_woocommerce_stable_match ),
+	'readme stable tag'
+);
+$voybit_for_woocommerce_release_version = $voybit_for_woocommerce_header_match[1];
+voybit_for_woocommerce_assert( $voybit_for_woocommerce_release_version === $voybit_for_woocommerce_constant_match[1], 'header and constant versions match' );
+voybit_for_woocommerce_assert( $voybit_for_woocommerce_release_version === $voybit_for_woocommerce_stable_match[1], 'header and stable tag versions match' );
+voybit_for_woocommerce_assert(
+	false !== strpos( $voybit_for_woocommerce_readme_source, '= ' . $voybit_for_woocommerce_release_version . ' =' ),
+	'stable version has a changelog entry'
+);
 
 $voybit_for_woocommerce_usd = Voybit_For_WooCommerce_Amount::from( '25.00', 'usd' );
 voybit_for_woocommerce_assert( '25.00' === $voybit_for_woocommerce_usd['fiat_amount'], 'usd amount' );

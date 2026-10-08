@@ -228,7 +228,7 @@ class Voybit_For_WooCommerce_Api {
 	 */
 	public static function normalize_base( $url ) {
 		$url   = trim( (string) $url );
-		$parts = parse_url( $url );
+		$parts = wp_parse_url( $url );
 		if (
 			! is_array( $parts )
 			|| ! isset( $parts['scheme'], $parts['host'] )
@@ -319,7 +319,7 @@ class Voybit_For_WooCommerce_Api {
 	 * @return bool
 	 */
 	private static function valid_https_url( $url ) {
-		$parts = parse_url( trim( (string) $url ) );
+		$parts = wp_parse_url( trim( (string) $url ) );
 		return is_array( $parts )
 			&& isset( $parts['scheme'], $parts['host'] )
 			&& 'https' === strtolower( (string) $parts['scheme'] )
