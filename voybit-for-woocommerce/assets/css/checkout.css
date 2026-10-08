@@ -1,0 +1,12 @@
+.voybit-for-woocommerce-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.voybit-for-woocommerce-label img,
+#payment .payment_method_voybit img {
+	width: 1.25rem;
+	height: 1.25rem;
+	vertical-align: middle;
+}
