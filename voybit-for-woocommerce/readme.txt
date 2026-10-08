@@ -4,7 +4,7 @@ Tags: woocommerce, payments, checkout
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,17 +26,21 @@ WooCommerce is a trademark of Automattic Inc. This plugin is not affiliated with
 
 == Installation ==
 
-1. Install and activate WooCommerce.
-2. Copy the `voybit-for-woocommerce` folder into `wp-content/plugins`, or zip that folder and upload it from Plugins, Add New, Upload Plugin.
-3. Activate Voybit for WooCommerce.
+1. Copy the `voybit-for-woocommerce` folder into `wp-content/plugins`, or zip that folder and upload it from Plugins, Add New, Upload Plugin.
+2. Activate Voybit for WooCommerce.
+3. Install and activate WooCommerce 8.3 or newer. Voybit can remain active while WooCommerce is being installed.
 4. Open WooCommerce, Settings, Payments, Voybit.
 5. Paste the API key, webhook secret, and asset ID from the Voybit dashboard. Leave a secret blank to keep the saved value.
 6. Copy the webhook URL and the return URL shown on that page into the same gateway in the Voybit dashboard. Both must use HTTPS.
-7. Enable Voybit.
+7. Select Enable Voybit and save the settings.
 
 The store address in WordPress must use HTTPS. Until the three values are saved, Voybit stays hidden at checkout.
 
 == Frequently Asked Questions ==
+
+= WordPress says required plugins are missing or inactive. =
+
+Install version 1.0.1 or newer. It can be activated before WooCommerce and shows a setup notice instead of blocking activation. WooCommerce still has to be active before the Voybit settings and payment method are available.
 
 = Where do I enter the API key? =
 
@@ -63,6 +67,9 @@ Confirm the method is enabled, the store address uses HTTPS, and the API key, we
 Contact Voybit support at https://voybit.com/contact.
 
 == Changelog ==
+
+= 1.0.1 =
+* Allow activation before WooCommerce is installed and show the required setup steps in WordPress.
 
 = 1.0.0 =
 * First release.

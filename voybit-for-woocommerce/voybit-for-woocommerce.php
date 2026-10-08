@@ -3,7 +3,7 @@
  * Plugin Name: Voybit for WooCommerce
  * Plugin URI: https://github.com/VOYBIT/voybit-payment-gateway-woocommerce
  * Description: Accept Voybit crypto payments in WooCommerce. Customers pay on the Voybit page, and the store confirms the order when Voybit reports the payment.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Voybit
  * Author URI: https://voybit.com
  * License: GPL-2.0-or-later
@@ -11,7 +11,6 @@
  * Text Domain: voybit-for-woocommerce
  * Requires at least: 6.5
  * Requires PHP: 7.4
- * Requires Plugins: woocommerce
  * WC requires at least: 8.3
  * WC tested up to: 11.2
  *
@@ -22,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.0.0' );
+define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.0.1' );
 define( 'VOYBIT_FOR_WOOCOMMERCE_FILE', __FILE__ );
 define( 'VOYBIT_FOR_WOOCOMMERCE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VOYBIT_FOR_WOOCOMMERCE_URL', plugin_dir_url( __FILE__ ) );
@@ -152,7 +151,7 @@ function voybit_for_woocommerce_missing_notice() {
 		return;
 	}
 	echo '<div class="notice notice-warning is-dismissible"><p>';
-	echo esc_html__( 'Voybit for WooCommerce needs WooCommerce. Install and activate WooCommerce, then open WooCommerce, Settings, Payments, Voybit.', 'voybit-for-woocommerce' );
+	echo esc_html__( 'Voybit for WooCommerce is active, but its payment method needs WooCommerce. Install and activate WooCommerce, then open WooCommerce, Settings, Payments, Voybit to enter the API key, webhook secret, and asset ID.', 'voybit-for-woocommerce' );
 	if ( current_user_can( 'install_plugins' ) ) {
 		$url = admin_url( 'plugin-install.php?s=woocommerce&tab=search&type=term' );
 		echo ' <a href="' . esc_url( $url ) . '">' . esc_html__( 'View WooCommerce in the plugin directory.', 'voybit-for-woocommerce' ) . '</a>';
