@@ -15,6 +15,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
  */
 function voybit_for_woocommerce_delete_settings() {
 	delete_option( 'woocommerce_voybit_settings' );
+	delete_option( 'voybit_for_woocommerce_configuration_notice' );
 }
 
 if ( is_multisite() ) {

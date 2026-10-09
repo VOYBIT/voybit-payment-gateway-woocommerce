@@ -90,8 +90,8 @@ class Voybit_For_WooCommerce_Amount {
 		}
 
 		return array(
-			'fiat_amount'    => 0 === $exponent ? $whole : $whole . '.' . $fraction,
-			'fiat_currency'  => $currency,
+			'fiat_amount'   => 0 === $exponent ? $whole : $whole . '.' . $fraction,
+			'fiat_currency' => $currency,
 		);
 	}
 

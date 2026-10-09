@@ -3,7 +3,7 @@
  * Plugin Name: Voybit for WooCommerce
  * Plugin URI: https://github.com/VOYBIT/voybit-payment-gateway-woocommerce
  * Description: Accept Voybit crypto payments in WooCommerce. Customers pay on the Voybit page, and the store confirms the order when Voybit reports the payment.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: Voybit
  * Author URI: https://voybit.com
  * License: GPL-2.0-or-later
@@ -11,6 +11,7 @@
  * Text Domain: voybit-for-woocommerce
  * Requires at least: 6.5
  * Requires PHP: 7.4
+ * Requires Plugins: woocommerce
  * WC requires at least: 8.3
  * WC tested up to: 11.2
  *
@@ -21,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.1.1' );
+define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.2.0' );
 define( 'VOYBIT_FOR_WOOCOMMERCE_FILE', __FILE__ );
 define( 'VOYBIT_FOR_WOOCOMMERCE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VOYBIT_FOR_WOOCOMMERCE_URL', plugin_dir_url( __FILE__ ) );
@@ -170,6 +171,8 @@ add_action( 'wp_enqueue_scripts', 'voybit_for_woocommerce_checkout_style' );
  * @return string[]
  */
 function voybit_for_woocommerce_action_links( $links ) {
+	// WooCommerce registers this capability; it is a required plugin dependency.
+	// phpcs:ignore WordPress.WP.Capabilities.Unknown
 	if ( ! current_user_can( 'manage_woocommerce' ) ) {
 		return $links;
 	}
@@ -180,27 +183,46 @@ function voybit_for_woocommerce_action_links( $links ) {
 add_filter( 'plugin_action_links_' . plugin_basename( VOYBIT_FOR_WOOCOMMERCE_FILE ), 'voybit_for_woocommerce_action_links' );
 
 /**
- * Ask an administrator to activate WooCommerce. Nothing is sent anywhere from this notice.
+ * Whether the current request is the Voybit payment settings screen.
+ *
+ * @return bool
  */
-function voybit_for_woocommerce_missing_notice() {
-	if ( ! current_user_can( 'activate_plugins' ) || class_exists( 'WooCommerce' ) ) {
+function voybit_for_woocommerce_is_settings_screen() {
+	if ( ! is_admin() || ! function_exists( 'get_current_screen' ) ) {
+		return false;
+	}
+	$screen = get_current_screen();
+	if ( ! $screen || 'woocommerce_page_wc-settings' !== $screen->id ) {
+		return false;
+	}
+	$tab     = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$section = isset( $_GET['section'] ) ? sanitize_key( wp_unslash( $_GET['section'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	return 'checkout' === $tab && 'voybit' === $section;
+}
+
+/**
+ * Load the guided setup styles only on the Voybit settings screen.
+ */
+function voybit_for_woocommerce_admin_style() {
+	if ( ! voybit_for_woocommerce_is_settings_screen() ) {
 		return;
 	}
-	echo '<div class="notice notice-warning is-dismissible"><p>';
-	echo esc_html__( 'Voybit for WooCommerce is active, but its payment method needs WooCommerce. Install and activate WooCommerce, then open WooCommerce, Settings, Payments, Voybit to enter the API key.', 'voybit-for-woocommerce' );
-	if ( current_user_can( 'install_plugins' ) ) {
-		$url = admin_url( 'plugin-install.php?s=woocommerce&tab=search&type=term' );
-		echo ' <a href="' . esc_url( $url ) . '">' . esc_html__( 'View WooCommerce in the plugin directory.', 'voybit-for-woocommerce' ) . '</a>';
-	}
-	echo '</p></div>';
+	wp_enqueue_style(
+		'voybit-for-woocommerce-admin',
+		VOYBIT_FOR_WOOCOMMERCE_URL . 'assets/css/admin.css',
+		array(),
+		VOYBIT_FOR_WOOCOMMERCE_VERSION
+	);
 }
-add_action( 'admin_notices', 'voybit_for_woocommerce_missing_notice' );
+add_action( 'admin_enqueue_scripts', 'voybit_for_woocommerce_admin_style' );
 
 /**
  * Show a safe, actionable notice when automatic integration setup failed.
  */
 function voybit_for_woocommerce_configuration_notice() {
-	if ( ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'activate_plugins' ) ) {
+	// WooCommerce registers this capability; it is a required plugin dependency.
+	// phpcs:ignore WordPress.WP.Capabilities.Unknown
+	if ( ! voybit_for_woocommerce_is_settings_screen() || ! current_user_can( 'manage_woocommerce' ) ) {
 		return;
 	}
 	$message = get_option( 'voybit_for_woocommerce_configuration_notice', '' );

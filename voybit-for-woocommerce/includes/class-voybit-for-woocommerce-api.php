@@ -72,7 +72,7 @@ class Voybit_For_WooCommerce_Api {
 	/**
 	 * Open checkout for an order, or reuse a checkout session that is still valid.
 	 *
-	 * @param WC_Order                         $order   Order being paid.
+	 * @param WC_Order                       $order   Order being paid.
 	 * @param Voybit_For_WooCommerce_Gateway $gateway Gateway settings.
 	 * @return string|WP_Error Checkout URL.
 	 */
@@ -179,7 +179,7 @@ class Voybit_For_WooCommerce_Api {
 			if ( '' === $public_id ) {
 				$public_id = $from_url;
 			}
-			$ids_match    = '' !== $from_url && strlen( $from_url ) === strlen( $public_id ) && hash_equals( $from_url, $public_id );
+			$ids_match = '' !== $from_url && strlen( $from_url ) === strlen( $public_id ) && hash_equals( $from_url, $public_id );
 			if ( ! self::valid_uuid( $session_id ) || ! $ids_match ) {
 				self::log( $order_id, 'invalid_checkout' );
 				return new WP_Error(

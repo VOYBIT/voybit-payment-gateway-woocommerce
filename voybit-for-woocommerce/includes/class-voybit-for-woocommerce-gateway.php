@@ -41,34 +41,41 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	 */
 	public function init_form_fields() {
 		$this->form_fields = array(
-			'enabled'         => array(
+			'voybit_setup' => array(
+				'type'        => 'voybit_setup',
+				'title'       => '',
+				'description' => '',
+				'desc_tip'    => false,
+			),
+			'enabled'      => array(
 				'title'       => __( 'Enable Voybit', 'voybit-for-woocommerce' ),
 				'label'       => __( 'Show Voybit on checkout', 'voybit-for-woocommerce' ),
 				'type'        => 'checkbox',
 				'description' => __( 'The WordPress site address must use HTTPS. Voybit stays hidden until the API key has configured this store successfully.', 'voybit-for-woocommerce' ),
 				'default'     => 'no',
 			),
-			'title'           => array(
+			'title'        => array(
 				'title'       => __( 'Title', 'voybit-for-woocommerce' ),
 				'type'        => 'text',
 				'description' => __( 'Name customers see at checkout.', 'voybit-for-woocommerce' ),
 				'default'     => __( 'Voybit', 'voybit-for-woocommerce' ),
 				'desc_tip'    => true,
 			),
-			'description'     => array(
+			'description'  => array(
 				'title'       => __( 'Description', 'voybit-for-woocommerce' ),
 				'type'        => 'textarea',
 				'description' => __( 'Short note customers see under the payment method.', 'voybit-for-woocommerce' ),
 				'default'     => __( 'You pay on the Voybit page. The store confirms the order when the payment arrives.', 'voybit-for-woocommerce' ),
 			),
-			'api_key'         => array(
+			'api_key'      => array(
 				'title'       => __( 'API key', 'voybit-for-woocommerce' ),
 				'type'        => 'voybit_secret',
 				'description' => __( 'Secret key from the Voybit dashboard, API keys. Leave this blank to keep the saved key.', 'voybit-for-woocommerce' ),
 				'default'     => '',
 				'placeholder' => 'vb_live_',
+				'desc_tip'    => false,
 			),
-			'api_base_url'    => array(
+			'api_base_url' => array(
 				'title'       => __( 'API base URL (advanced)', 'voybit-for-woocommerce' ),
 				'type'        => 'text',
 				'description' => __( 'Keep the default unless Voybit support gives you another HTTPS API base URL.', 'voybit-for-woocommerce' ),
@@ -79,6 +86,76 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	}
 
 	/**
+	 * Guided account, gateway, and API key setup.
+	 *
+	 * @param string               $key  Field key.
+	 * @param array<string, mixed> $data Field config.
+	 * @return string
+	 */
+	public function generate_voybit_setup_html( $key, $data ) {
+		unset( $key, $data );
+		$connected    = '' !== $this->api_key() && '' !== $this->webhook_secret();
+		$needs_finish = '' !== $this->api_key() && ! $connected;
+		$status_class = $connected ? 'is-connected' : ( $needs_finish ? 'needs-attention' : 'is-ready' );
+		$status_text  = $connected
+			? __( 'Connected securely', 'voybit-for-woocommerce' )
+			: ( $needs_finish ? __( 'Setup needs attention', 'voybit-for-woocommerce' ) : __( '4 steps · about 3 minutes', 'voybit-for-woocommerce' ) );
+		$steps        = array(
+			array(
+				'title'  => __( 'Open your Voybit dashboard', 'voybit-for-woocommerce' ),
+				'text'   => __( 'Create a merchant account or sign in. Keep the dashboard open while you connect this store.', 'voybit-for-woocommerce' ),
+				'label'  => __( 'Open dashboard', 'voybit-for-woocommerce' ),
+				'url'    => 'https://dashboard.voybit.com/',
+				'number' => '01',
+			),
+			array(
+				'title'  => __( 'Create an active gateway', 'voybit-for-woocommerce' ),
+				'text'   => __( 'Open Gateways, choose New gateway, name this store, select every asset customers may use, and keep the gateway active.', 'voybit-for-woocommerce' ),
+				'label'  => __( 'Open Gateways', 'voybit-for-woocommerce' ),
+				'url'    => 'https://dashboard.voybit.com/?view=gateways',
+				'number' => '02',
+			),
+			array(
+				'title'  => __( 'Create a gateway API key', 'voybit-for-woocommerce' ),
+				'text'   => __( 'Open API keys, choose Create secret key, select the gateway from step 2, then copy the full vb_live_ value. It is shown once.', 'voybit-for-woocommerce' ),
+				'label'  => __( 'Open API keys', 'voybit-for-woocommerce' ),
+				'url'    => 'https://dashboard.voybit.com/?view=keys',
+				'number' => '03',
+			),
+			array(
+				'title'  => __( 'Connect this WooCommerce store', 'voybit-for-woocommerce' ),
+				'text'   => __( 'Paste the key below, select Enable Voybit, and save. Voybit registers the signed webhook and customer return URL automatically.', 'voybit-for-woocommerce' ),
+				'label'  => __( 'Continue to API key', 'voybit-for-woocommerce' ),
+				'url'    => '#woocommerce_voybit_api_key',
+				'number' => '04',
+			),
+		);
+
+		$html  = '<tr class="voybit-setup-row"><td colspan="2">';
+		$html .= '<section class="voybit-setup" aria-labelledby="voybit-setup-title">';
+		$html .= '<header class="voybit-setup__head">';
+		$html .= '<span class="voybit-setup__brand" aria-hidden="true"><i></i><b>V</b></span>';
+		$html .= '<div><h2 id="voybit-setup-title">' . esc_html__( 'Connect Voybit to WooCommerce', 'voybit-for-woocommerce' ) . '</h2>';
+		$html .= '<p>' . esc_html__( 'Use one active gateway-bound secret key. The plugin configures the webhook and return URL for you.', 'voybit-for-woocommerce' ) . '</p></div>';
+		$html .= '<span class="voybit-setup__status ' . esc_attr( $status_class ) . '"><i></i>' . esc_html( $status_text ) . '</span>';
+		$html .= '</header><ol class="voybit-setup__steps">';
+
+		foreach ( $steps as $step ) {
+			$is_dashboard = 0 === strpos( $step['url'], 'https://' );
+			$html        .= '<li><span class="voybit-setup__number">' . esc_html( $step['number'] ) . '</span><div>';
+			$html        .= '<h3>' . esc_html( $step['title'] ) . '</h3><p>' . esc_html( $step['text'] ) . '</p>';
+			$html        .= '<a href="' . esc_url( $step['url'] ) . '"' . ( $is_dashboard ? ' target="_blank" rel="noopener noreferrer"' : '' ) . '>';
+			$html        .= esc_html( $step['label'] ) . '<span aria-hidden="true"> →</span></a></div></li>';
+		}
+
+		$html .= '</ol><footer class="voybit-setup__foot">';
+		$html .= '<span><b aria-hidden="true">✓</b>' . esc_html__( 'Your API key and webhook secret stay on this WordPress server and are never sent to the browser.', 'voybit-for-woocommerce' ) . '</span>';
+		$html .= '<a href="' . esc_url( 'https://voybit.com/contact' ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Need help? Contact Voybit support', 'voybit-for-woocommerce' ) . '<span aria-hidden="true"> →</span></a>';
+		$html .= '</footer></section></td></tr>';
+		return $html;
+	}
+
+	/**
 	 * Password field that never prints the saved secret.
 	 *
 	 * @param string               $key  Field key.
@@ -86,13 +163,14 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	 * @return string
 	 */
 	public function generate_voybit_secret_html( $key, $data ) {
-		$field_key = $this->get_field_key( $key );
-		$data      = wp_parse_args(
+		$field_key   = $this->get_field_key( $key );
+		$data        = wp_parse_args(
 			$data,
 			array(
 				'title'       => '',
 				'description' => '',
 				'placeholder' => '',
+				'desc_tip'    => false,
 			)
 		);
 		$placeholder = '' !== (string) $this->get_option( $key )
@@ -211,8 +289,8 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 		}
 
 		$settings = get_option( 'woocommerce_voybit_settings', array() );
-		if ( is_array( $settings ) && isset( $settings['asset_id'] ) ) {
-			unset( $settings['asset_id'] );
+		if ( is_array( $settings ) && ( isset( $settings['asset_id'] ) || isset( $settings['voybit_setup'] ) ) ) {
+			unset( $settings['asset_id'], $settings['voybit_setup'] );
 			update_option( 'woocommerce_voybit_settings', $settings );
 			$this->settings = $settings;
 		}
@@ -339,5 +417,4 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 		wp_safe_redirect( wc_get_checkout_url() );
 		exit;
 	}
-
 }

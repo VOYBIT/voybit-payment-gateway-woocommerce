@@ -1,0 +1,245 @@
+.voybit-setup-row > td {
+	padding: 0 0 24px !important;
+}
+
+.voybit-setup {
+	--voybit-brand: #5b4bff;
+	--voybit-ink: #11162a;
+	--voybit-muted: #5f6880;
+	--voybit-line: #dfe3ed;
+	overflow: hidden;
+	max-width: 1040px;
+	border: 1px solid var(--voybit-line);
+	border-radius: 18px;
+	background:
+		radial-gradient(circle at 100% 0, rgba(91, 75, 255, 0.1), transparent 34%),
+		#fff;
+	box-shadow: 0 14px 40px -30px rgba(31, 38, 76, 0.5);
+	color: var(--voybit-ink);
+}
+
+.voybit-setup__head {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 14px;
+	padding: 22px 24px;
+}
+
+.voybit-setup__brand {
+	position: relative;
+	display: grid;
+	width: 44px;
+	height: 44px;
+	place-items: center;
+	color: var(--voybit-brand);
+}
+
+.voybit-setup__brand i {
+	position: absolute;
+	inset: 6px;
+	border: 2px solid currentColor;
+	border-radius: 9px;
+	transform: rotate(30deg);
+}
+
+.voybit-setup__brand b {
+	position: relative;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.voybit-setup h2,
+.voybit-setup h3,
+.voybit-setup p {
+	margin: 0;
+}
+
+.voybit-setup h2 {
+	color: var(--voybit-ink);
+	font-size: 20px;
+	line-height: 1.25;
+}
+
+.voybit-setup__head p {
+	max-width: 680px;
+	margin-top: 4px;
+	color: var(--voybit-muted);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.voybit-setup__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	padding: 7px 10px;
+	border-radius: 999px;
+	background: #f0f1f6;
+	color: #626a7e;
+	font-size: 11px;
+	font-weight: 700;
+	white-space: nowrap;
+}
+
+.voybit-setup__status i {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: currentColor;
+	box-shadow: 0 0 0 4px rgba(98, 106, 126, 0.12);
+}
+
+.voybit-setup__status.is-connected {
+	background: #e9fbf4;
+	color: #087a57;
+}
+
+.voybit-setup__status.is-connected i {
+	box-shadow: 0 0 0 4px rgba(8, 122, 87, 0.12);
+}
+
+.voybit-setup__status.needs-attention {
+	background: #fff5df;
+	color: #9b5b00;
+}
+
+.voybit-setup__steps {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin: 0;
+	padding: 0;
+	border-top: 1px solid var(--voybit-line);
+	list-style: none;
+}
+
+.voybit-setup__steps li {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 12px;
+	min-height: 128px;
+	padding: 20px 24px;
+	border-bottom: 1px solid var(--voybit-line);
+}
+
+.voybit-setup__steps li:nth-child(odd) {
+	border-right: 1px solid var(--voybit-line);
+}
+
+.voybit-setup__number {
+	display: grid;
+	width: 34px;
+	height: 34px;
+	place-items: center;
+	border-radius: 10px;
+	background: #efedff;
+	color: var(--voybit-brand);
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 0.04em;
+}
+
+.voybit-setup__steps h3 {
+	padding-top: 2px;
+	color: var(--voybit-ink);
+	font-size: 14px;
+	line-height: 1.35;
+}
+
+.voybit-setup__steps p {
+	margin-top: 5px;
+	color: var(--voybit-muted);
+	font-size: 12.5px;
+	line-height: 1.52;
+}
+
+.voybit-setup__steps a,
+.voybit-setup__foot a {
+	display: inline-flex;
+	align-items: center;
+	margin-top: 10px;
+	color: var(--voybit-brand);
+	font-size: 12px;
+	font-weight: 700;
+	text-decoration: none;
+}
+
+.voybit-setup__steps a:hover,
+.voybit-setup__foot a:hover {
+	color: #4030e8;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.voybit-setup__steps a:focus-visible,
+.voybit-setup__foot a:focus-visible {
+	border-radius: 3px;
+	outline: 2px solid var(--voybit-brand);
+	outline-offset: 3px;
+}
+
+.voybit-setup__foot {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 18px;
+	padding: 15px 24px;
+	background: #fafbfe;
+	color: var(--voybit-muted);
+	font-size: 11.5px;
+	line-height: 1.45;
+}
+
+.voybit-setup__foot > span {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.voybit-setup__foot b {
+	display: grid;
+	width: 20px;
+	height: 20px;
+	flex: none;
+	place-items: center;
+	border-radius: 50%;
+	background: #e9fbf4;
+	color: #087a57;
+	font-size: 11px;
+}
+
+.voybit-setup__foot a {
+	flex: none;
+	margin-top: 0;
+}
+
+@media screen and (max-width: 782px) {
+	.voybit-setup__head {
+		grid-template-columns: auto minmax(0, 1fr);
+		padding: 18px;
+	}
+
+	.voybit-setup__status {
+		grid-column: 1 / -1;
+		width: fit-content;
+	}
+
+	.voybit-setup__steps {
+		grid-template-columns: 1fr;
+	}
+
+	.voybit-setup__steps li {
+		min-height: 0;
+		padding: 18px;
+	}
+
+	.voybit-setup__steps li:nth-child(odd) {
+		border-right: 0;
+	}
+
+	.voybit-setup__foot {
+		align-items: flex-start;
+		flex-direction: column;
+		padding: 15px 18px 18px;
+	}
+}

@@ -15,6 +15,8 @@ if ( ! defined( 'VOYBIT_FOR_WOOCOMMERCE_TEST' ) ) {
 }
 
 if ( ! function_exists( 'wp_parse_url' ) ) {
+	// The standalone test intentionally supplies the WordPress global it exercises.
+	// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, WordPress.WP.AlternativeFunctions.parse_url_parse_url
 	/**
 	 * Minimal WordPress URL parser stand-in for this standalone test file.
 	 *
@@ -24,6 +26,7 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 	function wp_parse_url( $url ) {
 		return parse_url( $url );
 	}
+	// phpcs:enable
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-amount.php';
@@ -37,15 +40,19 @@ require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-api.ph
  *
  * @param bool   $condition Result.
  * @param string $message   Failure text.
+ * @throws RuntimeException When the assertion fails.
  */
 function voybit_for_woocommerce_assert( $condition, $message ) {
 	if ( ! $condition ) {
+		// CLI-only test failure text is never rendered in a WordPress response.
+		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
 		throw new RuntimeException( $message );
 	}
 }
 
-$voybit_for_woocommerce_plugin_source = file_get_contents( dirname( __DIR__ ) . '/voybit-for-woocommerce.php' );
-$voybit_for_woocommerce_readme_source = file_get_contents( dirname( __DIR__ ) . '/readme.txt' );
+// These are local test fixtures, not remote requests.
+$voybit_for_woocommerce_plugin_source = file_get_contents( dirname( __DIR__ ) . '/voybit-for-woocommerce.php' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+$voybit_for_woocommerce_readme_source = file_get_contents( dirname( __DIR__ ) . '/readme.txt' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 voybit_for_woocommerce_assert( is_string( $voybit_for_woocommerce_plugin_source ), 'plugin source' );
 voybit_for_woocommerce_assert( is_string( $voybit_for_woocommerce_readme_source ), 'readme source' );
 voybit_for_woocommerce_assert(
@@ -66,6 +73,22 @@ voybit_for_woocommerce_assert( $voybit_for_woocommerce_release_version === $voyb
 voybit_for_woocommerce_assert(
 	false !== strpos( $voybit_for_woocommerce_readme_source, '= ' . $voybit_for_woocommerce_release_version . ' =' ),
 	'stable version has a changelog entry'
+);
+voybit_for_woocommerce_assert(
+	1 === preg_match( '/^[ \t]*\*[ \t]+Requires Plugins:[ \t]*woocommerce[ \t]*$/mi', $voybit_for_woocommerce_plugin_source ),
+	'plugin declares WooCommerce dependency'
+);
+voybit_for_woocommerce_assert(
+	1 === preg_match( '/^Requires Plugins:[ \t]*woocommerce[ \t]*$/mi', $voybit_for_woocommerce_readme_source ),
+	'readme declares WooCommerce dependency'
+);
+voybit_for_woocommerce_assert(
+	false === strpos( $voybit_for_woocommerce_plugin_source, 'voybit_for_woocommerce_missing_notice' ),
+	'plugin does not show a global missing-dependency notice'
+);
+voybit_for_woocommerce_assert(
+	false !== strpos( $voybit_for_woocommerce_plugin_source, 'voybit_for_woocommerce_is_settings_screen()' ),
+	'configuration notice is scoped to the Voybit settings screen'
 );
 
 $voybit_for_woocommerce_usd = Voybit_For_WooCommerce_Amount::from( '25.00', 'usd' );
@@ -100,7 +123,7 @@ foreach ( array( '25.501', '0.00', '0', '-1.00', 'USD', '25.00' ) as $voybit_for
 
 $voybit_for_woocommerce_id = 'nYVvXxsYGr5LZk8Dn7hU0Q';
 voybit_for_woocommerce_assert(
-	'https://voybit.com/pay/' . $voybit_for_woocommerce_id === Voybit_For_WooCommerce_Checkout::canonical( 'https://voybit.com/pay/' . $voybit_for_woocommerce_id . '/' ),
+	0 === strcmp( 'https://voybit.com/pay/' . $voybit_for_woocommerce_id, Voybit_For_WooCommerce_Checkout::canonical( 'https://voybit.com/pay/' . $voybit_for_woocommerce_id . '/' ) ),
 	'trailing slash'
 );
 foreach ( array(

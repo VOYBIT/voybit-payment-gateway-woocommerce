@@ -4,7 +4,8 @@ Tags: woocommerce, payments, checkout
 Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.1
+Requires Plugins: woocommerce
+Stable tag: 1.2.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,12 +27,12 @@ WooCommerce is a trademark of Automattic Inc. This plugin is not affiliated with
 
 == Installation ==
 
-1. Copy the `voybit-for-woocommerce` folder into `wp-content/plugins`, or zip that folder and upload it from Plugins, Add New, Upload Plugin.
-2. Activate Voybit for WooCommerce.
-3. Install and activate WooCommerce 8.3 or newer. Voybit can remain active while WooCommerce is being installed.
+1. Install and activate WooCommerce 8.3 or newer.
+2. Copy the `voybit-for-woocommerce` folder into `wp-content/plugins`, or zip that folder and upload it from Plugins, Add New, Upload Plugin.
+3. Activate Voybit for WooCommerce.
 4. Open WooCommerce, Settings, Payments, Voybit.
-5. Create a secret key in the Voybit dashboard, bind it to the gateway whose assets customers may use, and paste the key into WooCommerce.
-6. Select Enable Voybit and save the settings. The plugin registers its webhook and return URL automatically.
+5. Follow the illustrated guide to open the Voybit dashboard, create an active gateway, and create a secret API key bound to that gateway.
+6. Paste the API key, select Enable Voybit, and save. The plugin registers its webhook and return URL automatically.
 
 The store address in WordPress must use HTTPS. Until the API key is saved and automatic setup succeeds, Voybit stays hidden at checkout.
 
@@ -39,7 +40,7 @@ The store address in WordPress must use HTTPS. Until the API key is saved and au
 
 = WordPress says required plugins are missing or inactive. =
 
-Install version 1.0.1 or newer. It can be activated before WooCommerce and shows a setup notice instead of blocking activation. WooCommerce still has to be active before the Voybit settings and payment method are available.
+Install and activate WooCommerce 8.3 or newer first. WordPress uses the plugin dependency header to keep Voybit inactive until WooCommerce is available.
 
 = Where do I enter the API key? =
 
@@ -66,6 +67,11 @@ Confirm the method is enabled, the store address uses HTTPS, the API key is boun
 Contact Voybit support at https://voybit.com/contact.
 
 == Changelog ==
+
+= 1.2.0 =
+* Declare WooCommerce as a required plugin through the WordPress dependency header.
+* Keep setup messages inside the Voybit payment settings screen instead of the wider administration area.
+* Add an illustrated, linked guide for creating a Voybit account, gateway, and gateway-bound API key.
 
 = 1.1.1 =
 * Keep the plugin header, package version, and WordPress.org stable tag aligned.
