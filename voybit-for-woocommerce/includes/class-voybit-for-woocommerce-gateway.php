@@ -22,8 +22,8 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 		$this->id                 = 'voybit';
 		$this->icon               = VOYBIT_FOR_WOOCOMMERCE_URL . 'assets/icon.svg';
 		$this->has_fields         = false;
-		$this->method_title       = __( 'Voybit', 'voybit-for-woocommerce' );
-		$this->method_description = __( 'Customers choose an enabled asset and pay on the Voybit hosted checkout page. Saving the API key securely configures this store with Voybit.', 'voybit-for-woocommerce' );
+		$this->method_title       = __( 'Voybit Payment Gateway', 'voybit-for-woocommerce' );
+		$this->method_description = __( 'Customers choose an enabled asset and pay on the Voybit hosted checkout page. Saving the API key securely configures this store with Voybit. Totals in any currency other than US dollars are converted to US dollars when checkout opens.', 'voybit-for-woocommerce' );
 		$this->supports           = array( 'products' );
 
 		$this->init_form_fields();
@@ -66,6 +66,17 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 				'type'        => 'textarea',
 				'description' => __( 'Short note customers see under the payment method.', 'voybit-for-woocommerce' ),
 				'default'     => __( 'You pay on the Voybit page. The store confirms the order when the payment arrives.', 'voybit-for-woocommerce' ),
+			),
+			'iran_unit'    => array(
+				'title'       => __( 'Iranian price unit', 'voybit-for-woocommerce' ),
+				'type'        => 'select',
+				'description' => __( 'Applies only when the store currency is IRR or IRT. Automatic treats IRR as Iranian rials and IRT as tomans. One toman equals 10 rials. Every other currency is converted from its own code.', 'voybit-for-woocommerce' ),
+				'default'     => 'auto',
+				'options'     => array(
+					'auto'  => __( 'Automatic (IRR is rial, IRT is toman)', 'voybit-for-woocommerce' ),
+					'rial'  => __( 'Prices are rials', 'voybit-for-woocommerce' ),
+					'toman' => __( 'Prices are tomans', 'voybit-for-woocommerce' ),
+				),
 			),
 			'api_key'      => array(
 				'title'       => __( 'API key', 'voybit-for-woocommerce' ),
@@ -339,6 +350,19 @@ class Voybit_For_WooCommerce_Gateway extends WC_Payment_Gateway {
 	 */
 	public function webhook_secret() {
 		return trim( (string) $this->get_option( 'webhook_secret' ) );
+	}
+
+	/**
+	 * How Iranian IRR and IRT totals should be read.
+	 *
+	 * @return string auto, rial, or toman.
+	 */
+	public function iran_unit() {
+		$unit = strtolower( trim( (string) $this->get_option( 'iran_unit', 'auto' ) ) );
+		if ( ! in_array( $unit, array( 'auto', 'rial', 'toman' ), true ) ) {
+			return 'auto';
+		}
+		return $unit;
 	}
 
 	/**

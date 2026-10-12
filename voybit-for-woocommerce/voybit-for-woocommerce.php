@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Voybit for WooCommerce
+ * Plugin Name: Voybit Payment Gateway for WooCommerce
  * Plugin URI: https://github.com/VOYBIT/voybit-payment-gateway-woocommerce
- * Description: Accept Voybit crypto payments in WooCommerce. Customers pay on the Voybit page, and the store confirms the order when Voybit reports the payment.
- * Version: 1.2.0
+ * Description: WooCommerce payment gateway for Voybit. Customers pay on the Voybit page, and the store confirms the order when Voybit reports the payment.
+ * Version: 1.2.3
  * Author: Voybit
  * Author URI: https://voybit.com
  * License: GPL-2.0-or-later
@@ -22,12 +22,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.2.0' );
+define( 'VOYBIT_FOR_WOOCOMMERCE_VERSION', '1.2.3' );
 define( 'VOYBIT_FOR_WOOCOMMERCE_FILE', __FILE__ );
 define( 'VOYBIT_FOR_WOOCOMMERCE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VOYBIT_FOR_WOOCOMMERCE_URL', plugin_dir_url( __FILE__ ) );
 
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-amount.php';
+require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-rate.php';
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-checkout.php';
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-signature.php';
 require_once VOYBIT_FOR_WOOCOMMERCE_DIR . 'includes/class-voybit-for-woocommerce-request.php';
@@ -243,7 +244,7 @@ function voybit_for_woocommerce_privacy() {
 	if ( ! function_exists( 'wp_add_privacy_policy_content' ) ) {
 		return;
 	}
-	$content = __( 'When a customer pays with Voybit, this store sends the fixed order total, currency, order identifier, and a short description to Voybit to open hosted checkout. The API key and automatically issued webhook secret stay on this store. Voybit privacy policy: https://voybit.com/privacy', 'voybit-for-woocommerce' );
-	wp_add_privacy_policy_content( 'Voybit for WooCommerce', wp_kses_post( wpautop( $content ) ) );
+	$content = __( 'When a customer pays with Voybit, this store sends the order total in US dollars, the order identifier, and a short description to Voybit to open hosted checkout. Iranian rial and toman totals are converted on this store with a public USDT market price. Other non-USD totals are converted with a public US dollar exchange rate. Those rate requests do not include the order. The API key and automatically issued webhook secret stay on this store. Voybit privacy policy: https://voybit.com/privacy', 'voybit-for-woocommerce' );
+	wp_add_privacy_policy_content( __( 'Voybit Payment Gateway for WooCommerce', 'voybit-for-woocommerce' ), wp_kses_post( wpautop( $content ) ) );
 }
 add_action( 'admin_init', 'voybit_for_woocommerce_privacy' );

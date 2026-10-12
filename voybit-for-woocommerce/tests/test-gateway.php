@@ -30,6 +30,7 @@ if ( ! function_exists( 'wp_parse_url' ) ) {
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-amount.php';
+require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-rate.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-checkout.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-signature.php';
 require_once dirname( __DIR__ ) . '/includes/class-voybit-for-woocommerce-request.php';
@@ -120,6 +121,78 @@ foreach ( array( '25.501', '0.00', '0', '-1.00', 'USD', '25.00' ) as $voybit_for
 	}
 	voybit_for_woocommerce_assert( $voybit_for_woocommerce_threw, 'rejected ' . $voybit_for_woocommerce_bad );
 }
+
+voybit_for_woocommerce_assert( '1' === Voybit_For_WooCommerce_Amount::iranian_times( 'IRR', 'auto' ), 'irr is rial' );
+voybit_for_woocommerce_assert( '10' === Voybit_For_WooCommerce_Amount::iranian_times( 'IRT', 'auto' ), 'irt is toman' );
+voybit_for_woocommerce_assert( '10' === Voybit_For_WooCommerce_Amount::iranian_times( 'IRR', 'toman' ), 'irr prices can be toman' );
+voybit_for_woocommerce_assert( '1' === Voybit_For_WooCommerce_Amount::iranian_times( 'IRT', 'rial' ), 'irt prices can be rial' );
+voybit_for_woocommerce_assert( '' === Voybit_For_WooCommerce_Amount::iranian_times( 'EUR', 'toman' ), 'euro ignores iranian unit' );
+
+$voybit_for_woocommerce_toman = Voybit_For_WooCommerce_Amount::to_usd( '2000000', '2616740', '10' );
+$voybit_for_woocommerce_rial  = Voybit_For_WooCommerce_Amount::to_usd( '20000000', '2616740', '1' );
+voybit_for_woocommerce_assert( '7.64' === $voybit_for_woocommerce_toman['fiat_amount'], 'two million toman in usd' );
+voybit_for_woocommerce_assert( 'USD' === $voybit_for_woocommerce_toman['fiat_currency'], 'converted currency is usd' );
+voybit_for_woocommerce_assert( '261674' === $voybit_for_woocommerce_toman['per_usd'], 'toman per dollar' );
+voybit_for_woocommerce_assert( $voybit_for_woocommerce_toman['fiat_amount'] === $voybit_for_woocommerce_rial['fiat_amount'], 'toman matches ten rials' );
+
+$voybit_for_woocommerce_eur = Voybit_For_WooCommerce_Amount::to_usd( '10.00', '0.892629', '1' );
+voybit_for_woocommerce_assert( '11.20' === $voybit_for_woocommerce_eur['fiat_amount'], 'ten euro in usd' );
+voybit_for_woocommerce_assert( '0.892629' === $voybit_for_woocommerce_eur['per_usd'], 'euro per dollar' );
+
+$voybit_for_woocommerce_half = Voybit_For_WooCommerce_Amount::to_usd( '1', '8', '1' );
+voybit_for_woocommerce_assert( '0.13' === $voybit_for_woocommerce_half['fiat_amount'], 'half cent rounds up' );
+
+$voybit_for_woocommerce_rate_body = '{"status":"ok","stats":{"usdt-rls":{"latest":"2616740","bestSell":"2616740","isClosed":false}}}';
+voybit_for_woocommerce_assert(
+	'2616740' === Voybit_For_WooCommerce_Rate::parse_nobitex_rials( $voybit_for_woocommerce_rate_body ),
+	'nobitex rial rate'
+);
+$voybit_for_woocommerce_table = '{"result":"success","base_code":"USD","rates":{"EUR":0.892629,"IRR":42000,"JPY":158.230103}}';
+voybit_for_woocommerce_assert(
+	'0.892629' === Voybit_For_WooCommerce_Rate::parse_usd_table( $voybit_for_woocommerce_table, 'eur' ),
+	'euro table rate'
+);
+voybit_for_woocommerce_assert(
+	'158.230103' === Voybit_For_WooCommerce_Rate::parse_usd_table( $voybit_for_woocommerce_table, 'JPY' ),
+	'yen table rate'
+);
+foreach ( array( 'IRR', 'IRT', 'USD', 'ZZZ' ) as $voybit_for_woocommerce_blocked ) {
+	$voybit_for_woocommerce_threw = false;
+	try {
+		Voybit_For_WooCommerce_Rate::parse_usd_table( $voybit_for_woocommerce_table, $voybit_for_woocommerce_blocked );
+	} catch ( InvalidArgumentException $voybit_for_woocommerce_error ) {
+		$voybit_for_woocommerce_threw = true;
+		unset( $voybit_for_woocommerce_error );
+	}
+	voybit_for_woocommerce_assert( $voybit_for_woocommerce_threw, 'table rejected ' . $voybit_for_woocommerce_blocked );
+}
+foreach ( array( '42000', '99999.9', '100000000.1', '0' ) as $voybit_for_woocommerce_bad_rate ) {
+	$voybit_for_woocommerce_threw = false;
+	try {
+		Voybit_For_WooCommerce_Rate::parse_nobitex_rials( '{"status":"ok","stats":{"usdt-rls":{"latest":"' . $voybit_for_woocommerce_bad_rate . '"}}}' );
+	} catch ( InvalidArgumentException $voybit_for_woocommerce_error ) {
+		$voybit_for_woocommerce_threw = true;
+		unset( $voybit_for_woocommerce_error );
+	}
+	voybit_for_woocommerce_assert( $voybit_for_woocommerce_threw, 'rejected rial rate ' . $voybit_for_woocommerce_bad_rate );
+}
+$voybit_for_woocommerce_small = false;
+try {
+	Voybit_For_WooCommerce_Amount::to_usd( '1', '2616740', '1' );
+} catch ( InvalidArgumentException $voybit_for_woocommerce_error ) {
+	$voybit_for_woocommerce_small = true;
+	unset( $voybit_for_woocommerce_error );
+}
+voybit_for_woocommerce_assert( $voybit_for_woocommerce_small, 'one rial is below one cent' );
+
+voybit_for_woocommerce_assert(
+	'woocommerce:15:usd:7.64:1' === Voybit_For_WooCommerce_Request::for_priced_order( 15, '7.64', 1 ),
+	'converted idempotency key'
+);
+voybit_for_woocommerce_assert(
+	'' === Voybit_For_WooCommerce_Request::for_priced_order( 15, '7.6', 1 ),
+	'rejects a short dollar amount'
+);
 
 $voybit_for_woocommerce_id = 'nYVvXxsYGr5LZk8Dn7hU0Q';
 voybit_for_woocommerce_assert(

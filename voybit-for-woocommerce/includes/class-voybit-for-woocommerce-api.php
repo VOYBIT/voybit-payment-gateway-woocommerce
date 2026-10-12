@@ -100,14 +100,22 @@ class Voybit_For_WooCommerce_Api {
 			}
 
 			$total = wc_format_decimal( $order->get_total(), wc_get_price_decimals() );
-			try {
-				$priced = Voybit_For_WooCommerce_Amount::from( $total, $order->get_currency() );
-			} catch ( InvalidArgumentException $error ) {
-				unset( $error );
-				return new WP_Error(
-					'voybit_amount',
-					__( 'This order total cannot be sent to Voybit.', 'voybit-for-woocommerce' )
-				);
+			$quote = self::quote_for_checkout( $order, $gateway, $total );
+			if ( is_wp_error( $quote ) ) {
+				return $quote;
+			}
+			$priced  = $quote['priced'];
+			$attempt = 1;
+			if ( $quote['converted'] ) {
+				$attempt = self::next_fx_attempt( $order );
+				$fx_key  = Voybit_For_WooCommerce_Request::for_priced_order( $order_id, $priced['fiat_amount'], $attempt );
+				if ( 0 === $attempt || '' === $fx_key ) {
+					return new WP_Error(
+						'voybit_order',
+						__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+					);
+				}
+				$key = $fx_key;
 			}
 
 			// Kept in English so a retry sends the same body as the first request.
@@ -140,69 +148,205 @@ class Voybit_For_WooCommerce_Api {
 				);
 			}
 
-			$response = self::post( $base . '/v1/gateway/checkout-sessions', $body, $gateway->api_key(), $key );
-			if ( is_wp_error( $response ) ) {
-				self::log( $order_id, 'transport' );
-				return new WP_Error(
-					'voybit_transport',
-					__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
-				);
-			}
-
-			$code = (int) wp_remote_retrieve_response_code( $response );
-			$data = json_decode( wp_remote_retrieve_body( $response ), true );
-			if ( $code < 200 || $code >= 300 || ! is_array( $data ) ) {
-				$error_code = ( is_array( $data ) && isset( $data['error']['code'] ) ) ? (string) $data['error']['code'] : 'http_' . $code;
-				self::log( $order_id, $error_code );
-				$safe_code = substr( sanitize_key( $error_code ), 0, 64 );
-				if ( '' === $safe_code ) {
-					$safe_code = 'unknown';
+			$tries = $quote['converted'] ? 2 : 1;
+			while ( $tries > 0 ) {
+				--$tries;
+				$response = self::post( $base . '/v1/gateway/checkout-sessions', $body, $gateway->api_key(), $key );
+				if ( is_wp_error( $response ) ) {
+					self::log( $order_id, 'transport' );
+					return new WP_Error(
+						'voybit_transport',
+						__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+					);
 				}
-				$order->add_order_note(
-					sprintf(
-						/* translators: %s: error code */
-						__( 'Voybit could not open checkout (%s).', 'voybit-for-woocommerce' ),
-						$safe_code
-					)
-				);
+
+				$code = (int) wp_remote_retrieve_response_code( $response );
+				$data = json_decode( wp_remote_retrieve_body( $response ), true );
+				if ( $code < 200 || $code >= 300 || ! is_array( $data ) ) {
+					$error_code = ( is_array( $data ) && isset( $data['error']['code'] ) ) ? (string) $data['error']['code'] : 'http_' . $code;
+					self::log( $order_id, $error_code );
+					$safe_code = substr( sanitize_key( $error_code ), 0, 64 );
+					if ( '' === $safe_code ) {
+						$safe_code = 'unknown';
+					}
+					$order->add_order_note(
+						sprintf(
+							/* translators: %s: error code */
+							__( 'Voybit could not open checkout (%s).', 'voybit-for-woocommerce' ),
+							$safe_code
+						)
+					);
+					$order->save();
+					return new WP_Error(
+						'voybit_api',
+						__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+					);
+				}
+
+				$session_id   = isset( $data['session_id'] ) ? strtolower( (string) $data['session_id'] ) : '';
+				$checkout_url = Voybit_For_WooCommerce_Checkout::canonical( isset( $data['checkout_url'] ) ? (string) $data['checkout_url'] : '' );
+				$public_id    = isset( $data['public_id'] ) ? (string) $data['public_id'] : '';
+				$from_url     = '' !== $checkout_url ? substr( $checkout_url, strlen( 'https://voybit.com/pay/' ) ) : '';
+				if ( '' === $public_id ) {
+					$public_id = $from_url;
+				}
+				$ids_match = '' !== $from_url && strlen( $from_url ) === strlen( $public_id ) && hash_equals( $from_url, $public_id );
+				if ( ! self::valid_uuid( $session_id ) || ! $ids_match ) {
+					self::log( $order_id, 'invalid_checkout' );
+					return new WP_Error(
+						'voybit_checkout',
+						__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+					);
+				}
+
+				$expires = isset( $data['expires_at'] ) ? strtotime( (string) $data['expires_at'] ) : false;
+				$expired = ! is_int( $expires ) || $expires <= time();
+				if ( $quote['converted'] && $expired ) {
+					if ( $tries < 1 ) {
+						self::log( $order_id, 'expired_checkout' );
+						return new WP_Error(
+							'voybit_checkout',
+							__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+						);
+					}
+					++$attempt;
+					$order->update_meta_data( '_voybit_fx_attempt', (string) $attempt );
+					$order->save();
+					$key = Voybit_For_WooCommerce_Request::for_priced_order( $order_id, $priced['fiat_amount'], $attempt );
+					if ( '' === $key ) {
+						return new WP_Error(
+							'voybit_order',
+							__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+						);
+					}
+					continue;
+				}
+				if ( $expired ) {
+					$expires = time() + self::PAYMENT_WINDOW_SECONDS;
+				}
+
+				$order->update_meta_data( '_voybit_session_id', $session_id );
+				$order->update_meta_data( '_voybit_public_id', $public_id );
+				$order->update_meta_data( '_voybit_checkout_url', $checkout_url );
+				$order->update_meta_data( '_voybit_expires_at', (string) $expires );
+				if ( $quote['converted'] ) {
+					$order->update_meta_data( '_voybit_quoted_usd', $priced['fiat_amount'] );
+					$order->update_meta_data( '_voybit_quoted_rate', $priced['per_usd'] );
+					$order->add_order_note( $quote['note'] );
+				}
+				$order->add_order_note( __( 'Voybit checkout is open.', 'voybit-for-woocommerce' ) );
 				$order->save();
-				return new WP_Error(
-					'voybit_api',
-					__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
-				);
+				return $checkout_url;
 			}
 
-			$session_id   = isset( $data['session_id'] ) ? strtolower( (string) $data['session_id'] ) : '';
-			$checkout_url = Voybit_For_WooCommerce_Checkout::canonical( isset( $data['checkout_url'] ) ? (string) $data['checkout_url'] : '' );
-			$public_id    = isset( $data['public_id'] ) ? (string) $data['public_id'] : '';
-			$from_url     = '' !== $checkout_url ? substr( $checkout_url, strlen( 'https://voybit.com/pay/' ) ) : '';
-			if ( '' === $public_id ) {
-				$public_id = $from_url;
-			}
-			$ids_match = '' !== $from_url && strlen( $from_url ) === strlen( $public_id ) && hash_equals( $from_url, $public_id );
-			if ( ! self::valid_uuid( $session_id ) || ! $ids_match ) {
-				self::log( $order_id, 'invalid_checkout' );
-				return new WP_Error(
-					'voybit_checkout',
-					__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
-				);
-			}
-
-			$expires = isset( $data['expires_at'] ) ? strtotime( (string) $data['expires_at'] ) : false;
-			if ( ! is_int( $expires ) || $expires <= time() ) {
-				$expires = time() + self::PAYMENT_WINDOW_SECONDS;
-			}
-
-			$order->update_meta_data( '_voybit_session_id', $session_id );
-			$order->update_meta_data( '_voybit_public_id', $public_id );
-			$order->update_meta_data( '_voybit_checkout_url', $checkout_url );
-			$order->update_meta_data( '_voybit_expires_at', (string) $expires );
-			$order->add_order_note( __( 'Voybit checkout is open.', 'voybit-for-woocommerce' ) );
-			$order->save();
-			return $checkout_url;
+			return new WP_Error(
+				'voybit_checkout',
+				__( 'Voybit could not open checkout. Try again, or choose another payment method.', 'voybit-for-woocommerce' )
+			);
 		} finally {
 			self::unlock( $order_id );
 		}
+	}
+
+	/**
+	 * Price an order in US dollars.
+	 *
+	 * USD totals pass through. Every other currency is converted at the current rate.
+	 *
+	 * @param WC_Order                       $order   Order being paid.
+	 * @param Voybit_For_WooCommerce_Gateway $gateway Gateway settings.
+	 * @param string                         $total   Decimal order total.
+	 * @return array{priced: array<string, string>, converted: bool, note: string}|WP_Error
+	 */
+	private static function quote_for_checkout( $order, $gateway, $total ) {
+		$currency = strtoupper( trim( (string) $order->get_currency() ) );
+		if ( 'USD' === $currency ) {
+			try {
+				$priced = Voybit_For_WooCommerce_Amount::from( $total, 'USD' );
+			} catch ( InvalidArgumentException $error ) {
+				unset( $error );
+				return new WP_Error(
+					'voybit_amount',
+					__( 'This order total cannot be sent to Voybit.', 'voybit-for-woocommerce' )
+				);
+			}
+			return array(
+				'priced'    => $priced,
+				'converted' => false,
+				'note'      => '',
+			);
+		}
+		if ( ! preg_match( '/^[A-Z]{3}$/', $currency ) ) {
+			return new WP_Error(
+				'voybit_amount',
+				__( 'This order total cannot be sent to Voybit.', 'voybit-for-woocommerce' )
+			);
+		}
+
+		$units = Voybit_For_WooCommerce_Rate::per_usd( $currency );
+		if ( is_wp_error( $units ) || ! is_string( $units ) || '' === $units ) {
+			self::log( (int) $order->get_id(), 'fx_rate' );
+			return new WP_Error(
+				'voybit_rate',
+				__( 'Voybit could not price this order in US dollars. Try again in a moment.', 'voybit-for-woocommerce' )
+			);
+		}
+
+		$times = Voybit_For_WooCommerce_Amount::iranian_times( $currency, $gateway->iran_unit() );
+		if ( '' === $times ) {
+			$times = '1';
+		}
+		try {
+			$priced = Voybit_For_WooCommerce_Amount::to_usd( $total, $units, $times );
+		} catch ( InvalidArgumentException $error ) {
+			unset( $error );
+			self::log( (int) $order->get_id(), 'fx_amount' );
+			return new WP_Error(
+				'voybit_rate',
+				__( 'Voybit could not price this order in US dollars. Try again in a moment.', 'voybit-for-woocommerce' )
+			);
+		}
+
+		return array(
+			'priced'    => $priced,
+			'converted' => true,
+			'note'      => sprintf(
+				/* translators: 1: store total, 2: store currency code, 3: US dollar total, 4: store-currency units per US dollar */
+				__( 'Voybit converted %1$s %2$s to %3$s USD at %4$s %2$s per US dollar.', 'voybit-for-woocommerce' ),
+				$total,
+				$currency,
+				$priced['fiat_amount'],
+				$priced['per_usd']
+			),
+		);
+	}
+
+	/**
+	 * Attempt number for a converted checkout.
+	 *
+	 * A new attempt is used after the previous Voybit session has expired.
+	 *
+	 * @param WC_Order $order Order.
+	 * @return int Zero when no further attempt is allowed.
+	 */
+	private static function next_fx_attempt( $order ) {
+		$attempt = (int) $order->get_meta( '_voybit_fx_attempt' );
+		if ( $attempt < 1 ) {
+			$attempt = 1;
+		}
+		$previous = trim( (string) $order->get_meta( '_voybit_checkout_url' ) );
+		$expires  = (int) $order->get_meta( '_voybit_expires_at' );
+		if ( '' !== $previous && $expires <= time() + 30 ) {
+			++$attempt;
+		}
+		if ( $attempt > 40 ) {
+			return 0;
+		}
+		if ( (string) $attempt !== (string) $order->get_meta( '_voybit_fx_attempt' ) ) {
+			$order->update_meta_data( '_voybit_fx_attempt', (string) $attempt );
+			$order->save();
+		}
+		return $attempt;
 	}
 
 	/**
